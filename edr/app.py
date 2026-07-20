@@ -15,7 +15,11 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app, origins=['http://localhost:8889', 'http://127.0.0.1:8889', 'http://localhost:9000'], supports_credentials=True)
+# CORS origins 可通过 EDR_ALLOWED_ORIGINS 环境变量自定义（逗号分隔）
+# 默认仅允许 localhost（同机部署）
+_default_origins = 'http://localhost:8889,http://127.0.0.1:8889,http://localhost:9000,http://127.0.0.1:9000'
+EDR_ALLOWED_ORIGINS = [o.strip() for o in os.getenv('EDR_ALLOWED_ORIGINS', _default_origins).split(',') if o.strip()]
+CORS(app, origins=EDR_ALLOWED_ORIGINS, supports_credentials=True)
 
 # 数据存储
 DATA_DIR = Path(__file__).parent.parent / 'data' / 'edr'

@@ -4,15 +4,23 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+# 安全生产：使用专用用户（首次部署需 useradd）
+User=socadmin
+Group=socadmin
 WorkingDirectory=/opt/soc-agent
-Environment=SOC_ADMIN_FLASK_SECRET=your-secret-key-here-(at-least-32-hex)
-Environment=SOC_ADMIN_SECRET=your-admin-api-secret-(at-least-32-hex)
+Environment=SOC_ADMIN_FLASK_SECRET=your-secret-here-generate-with-openssl-rand-hex-32
+Environment=SOC_ADMIN_SECRET=your-secret-here-generate-with-openssl-rand-hex-32
+Environment=EDR_ALLOWED_ORIGINS=http://localhost:8889,http://127.0.0.1:8889
 ExecStart=/usr/local/bin/gunicorn -w 4 -k gevent -b 0.0.0.0:8889 --timeout 120 web.admin.app:app
 Restart=always
 RestartSec=5
 StandardOutput=append:/opt/soc-agent/logs/gunicorn.log
 StandardError=append:/opt/soc-agent/logs/gunicorn.error.log
+
+# 强化安全：禁止 root 写入系统目录
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
 
 [Install]
 WantedBy=multi-user.target
