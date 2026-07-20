@@ -311,6 +311,32 @@ class TestAPI(unittest.TestCase):
         self.assertTrue(data['success'])
         self.assertIn('tools', data)
 
+    # ====== API 文档 ======
+
+    def test_77_api_docs(self):
+        """/api/docs 返回可用的 Swagger UI 风格文档页面"""
+        self.set_auth()
+        r = self.app.get('/api/docs')
+        self.assertEqual(r.status_code, 200)
+        body = r.get_data(as_text=True)
+        # 包含 HTML 必要部分
+        self.assertIn('<html', body)
+        self.assertIn('SOC API', body)
+        # 包含 Swagger UI CSS (从 CDN 加载)
+        self.assertIn('swagger-ui.css', body)
+        # 包含多个 API 分类 emoji
+        self.assertTrue(any(emoji in body for emoji in ['🔐', '⚙️', '📊', '📁', '🚨', '🛡️', '👥']))
+        # 包含 API_SPEC JSON dump
+        self.assertIn('const spec', body)
+
+    def test_78_api_docs_no_auth_required(self):
+        """/api/docs 匿名访问也能看（公共文档）"""
+        # 创建一个新 client，不继承 session
+        from app import app
+        public_client = app.test_client()
+        r = public_client.get('/api/docs')
+        self.assertEqual(r.status_code, 200)
+
     # ====== 审计日志 ======
 
     def test_80_audit_list(self):

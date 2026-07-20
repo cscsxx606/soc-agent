@@ -93,17 +93,43 @@ soc-agent/
 
 ## 🔌 API 接口
 
+### 文档
+
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET  | `/` | Web 控制台 |
-| GET  | `/api/stats` | 系统统计 |
-| GET  | `/api/alerts` | 告警列表 |
+| GET  | `/` | Web 控制台 (Admin) |
+| GET  | `/api/docs` | **Swagger UI 风格的 API 文档页**（匿名可访） |
+| GET  | `/api/version` | API 版本信息 |
+| GET  | `/health` | 健康检查 |
+
+### 告警流转 (Pipeline)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
 | POST | `/api/demo` | 加载演示告警 |
-| POST | `/api/alerts/triage` | 告警分流 |
-| POST | `/api/hunt` | 威胁狩猎 |
-| POST | `/api/respond` | 应急响应 |
-| POST | `/api/vuln/scan` | 漏洞评估 |
+| POST | `/api/alerts/triage` | 告警分流 (Phase 1) |
+| POST | `/api/hunt` | 威胁狩猎 (Phase 2) |
+| POST | `/api/respond` | 应急响应 (Phase 3) |
+| POST | `/api/vuln/scan` | 漏洞评估 (Phase 4) |
 | POST | `/api/pipeline/full` | 完整流水线 |
+
+### 管理后台 (Admin)
+
+所有 `/api/admin/*` 接口需要登录 session 或 JWT。完整列表访问 `/api/docs` 查看（点开后会自动列出）。
+
+主要分类：
+- ⚙️ 系统：health / version
+- 🔐 认证：login / logout
+- 📊 仪表盘：stats / charts
+- 📁 数据源：sources
+- 🛡️ 平台/Agent 管理：agents
+- 🚨 事件：incidents (含 search filter)
+- 📋 Playbook：playbooks
+- 👥 用户：users
+- ✅ 审计：audit
+- 🌐 多租户：tenants
+- 🔔 通知：notifications
+- 🎨 Branding：branding
 
 ### API 调用示例
 
