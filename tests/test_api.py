@@ -130,7 +130,52 @@ class TestAPI(unittest.TestCase):
         for inc in data['incidents']:
             self.assertEqual(inc['priority'], 'P1')
 
-    def test_32_incidents_export(self):
+    def test_32_incidents_search_by_alert_type(self):
+        """search 参数应过滤 alert_type LIKE 字段"""
+        self.set_auth()
+        from db import get_db
+        import time
+        unique_type = 'search_test_type_' + str(int(time.time()))
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO incidents (alert_id, timestamp, source_ip, alert_type, severity, priority, risk_score, hostname, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                f'TEST-{int(time.time())}', '2026-07-20T10:00:00Z', '203.0.113.99',
+                unique_type, 'high', 'P1', 80, 'search-test-host', 'desc'
+            ))
+            conn.commit()
+
+        r = self.app.get(f'/api/admin/incidents/list?search=search_test_type')
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        # at least our inserted row matches
+        found = [inc for inc in data['incidents'] if inc['alert_type'] == unique_type]
+        self.assertGreater(len(found), 0, f"search did not match {unique_type}")
+
+    def test_33_incidents_search_by_ip(self):
+        """search 参数应过滤 source_ip LIKE 字段"""
+        self.set_auth()
+        from db import get_db
+        import time
+        unique_ip = '203.0.113.' + str((int(time.time()) % 200) + 50)
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO incidents (alert_id, timestamp, source_ip, alert_type, severity, priority, risk_score, hostname, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                f'TEST-{int(time.time())}-{unique_ip}', '2026-07-20T10:00:00Z', unique_ip,
+                'ssh_brute_force', 'medium', 'P2', 60, 'ip-search-host', 'desc'
+            ))
+            conn.commit()
+
+        r = self.app.get(f'/api/admin/incidents/list?search={unique_ip}')
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        found = [inc for inc in data['incidents'] if inc['source_ip'] == unique_ip]
+        self.assertGreater(len(found), 0, f"search did not match IP {unique_ip}")
+
+    def test_34_incidents_export(self):
         self.set_auth()
         r = self.app.post('/api/admin/incidents/export', json={})
         self.assertEqual(r.status_code, 200)
@@ -471,12 +516,25 @@ class TestScanWhitelist(unittest.TestCase):
             sess['username'] = 'admin'
             sess['role'] = 'admin'
 
+    def _set_auth(self):
+        """每个测试前重新注入 session（test_client 每次都新建）"""
+        with self.app.session_transaction() as sess:
+            sess['username'] = 'admin'
+            sess['role'] = 'admin'
+
     @classmethod
     def tearDownClass(cls):
         import web.admin.db as db_module
         db_module.DB_PATH = cls._orig_db_path
         import shutil
         shutil.rmtree(cls.tmp_dir, ignore_errors=True)
+
+    def setUp(self):
+        """每个测试前清理冲突的 scan_whitelist 行（避免与跨隔离在数据序中的污染）。"""
+        from db import get_db
+        with get_db() as conn:
+            conn.execute("DELETE FROM scan_whitelist WHERE ip_or_cidr IN ('198.51.100.0/24', '10.255.255.0/24', '172.31.255.0/24')")
+            conn.commit()
 
     def test_01_whitelist_add(self):
         r = self.app.post('/api/admin/scans/whitelist/add', json={

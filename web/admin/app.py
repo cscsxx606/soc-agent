@@ -450,7 +450,11 @@ def register_apis():
     pipelines.register(app)
 
 # ============ 初始化 DB（Gunicorn 多进程通过文件锁保证只执行一次）============
-init_db()
+# 注意：这里没有 module-level 调用 init_db()
+# 改为由 Gunicorn worker 启动入口（在 if __name__ == '__main__' 下方）显式调用，
+# 这样测试 fixture 可以先修改 db.DB_PATH 再触发初始化。
+# 见 run_server() 中的 init_db() 调用。
+
 register_apis()
 
 # 注册 API 文档
@@ -486,6 +490,8 @@ def run_server(host='0.0.0.0', port=8889, debug=False):
 ║     gunicorn -w 4 -k gevent -b 0.0.0.0:{port} web.admin.app:app          ║
 ╚════════════════════════════════════════════════════════════════════════════╝
     """)
+    # 显式初始化 DB（生产环境，确保表结构存在；测试环境用 setUpClass 控制）
+    init_db()
     app.run(host=host, port=port, debug=debug, use_reloader=False)
 
 
