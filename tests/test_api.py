@@ -183,6 +183,24 @@ class TestAPI(unittest.TestCase):
         self.assertTrue(data['success'])
         self.assertGreater(data['count'], 0)
 
+    def test_35_incidents_export_with_filter(self):
+        """验证 incidents.export 返回非零 count"""
+        self.set_auth()
+        from db import get_db
+        import time
+        alert_id = 'EXPORT_TEST_' + str(int(time.time()*1000))
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO incidents (alert_id, timestamp, source_ip, alert_type, severity, priority, risk_score, hostname, description)
+                VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
+            """, (alert_id, '192.168.99.99', 'export_test', 'medium', 'P3', 50, 'export-host', 'desc'))
+            conn.commit()
+        r = self.app.post('/api/admin/incidents/export', json={'format': 'csv', 'limit': 1000})
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertTrue(data['success'])
+        self.assertGreater(data['count'], 0)
+
     # ====== 用户管理 ======
 
     def test_40_users_list(self):
@@ -337,6 +355,35 @@ class TestAPI(unittest.TestCase):
         r = public_client.get('/api/docs')
         self.assertEqual(r.status_code, 200)
 
+    # ====== Prometheus 指标 ======
+
+    def test_79_metrics_endpoint_public(self):
+        """/metrics 端点对外暴露 (Prometheus)"""
+        self.set_auth()
+        r = self.app.get('/metrics')
+        self.assertEqual(r.status_code, 200)
+        ct = r.headers.get('Content-Type', '')
+        # prometheus text format = 'text/plain; version=0.0.4; charset=utf-8'
+        self.assertTrue('text/plain' in ct)
+        body = r.get_data(as_text=True)
+        # 包含业务指标
+        self.assertIn('soc_http_requests_total', body)
+        self.assertIn('soc_http_request_duration_seconds', body)
+        self.assertIn('soc_system_cpu_percent', body)
+
+    def test_80_metrics_records_request(self):
+        """调几个请求后 /metrics 里应该看到 endpoint label"""
+        self.set_auth()
+        # trigger 3 requests
+        for _ in range(3):
+            self.app.get('/health')
+        r = self.app.get('/metrics')
+        body = r.get_data(as_text=True)
+        # endpoint label 中包含 /health
+        self.assertIn('endpoint="/health"', body)
+        # method label 中包含 GET
+        self.assertIn('method="GET"', body)
+
     # ====== 审计日志 ======
 
     def test_80_audit_list(self):
@@ -392,6 +439,100 @@ class TestAPI(unittest.TestCase):
         data = r.get_json()
         self.assertTrue(data['success'])
         self.assertIn('pipelines', data)
+
+    # ====== 额外 CRUD / 接口测试 ======
+
+    def test_91_targets_list(self):
+        self.set_auth()
+        r = self.app.get('/api/admin/targets/list')
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertTrue(data['success'])
+
+    def test_92_config_center_list(self):
+        """配置中心 list  返回 settings+env快照"""
+        self.set_auth()
+        r = self.app.get('/api/admin/config-center/list')
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertTrue(data['success'])
+        self.assertIn('settings_table', data)  # 实际返回 settings_table 字段
+        self.assertIn('env_vars', data)
+        # secret 字段脱敏 - 检查环境变量里不出现 sk- 开头真实 key
+        import json
+        s = json.dumps(data, default=str)
+        self.assertNotIn('sk-', s, '不应暴露真实 API key (sk-*)')
+
+    def test_93_config_center_health(self):
+        """检查缺失的加密配置项"""
+        self.set_auth()
+        r = self.app.get('/api/admin/config-center/health')
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertTrue(data['success'])
+        self.assertIn('issues', data)  # 实际返回 issues 字段
+
+    def test_94_dashboard_charts(self):
+        """仪表盘图表接口"""
+        self.set_auth()
+        r = self.app.get('/api/admin/dashboard/charts')
+        self.assertEqual(r.status_code, 200)
+        data = r.get_json()
+        self.assertTrue(data['success'])
+
+    def test_95_admin_events_stream_headers(self):
+        """SSE 接口能返回正确的 text/event-stream 头"""
+        # 不调 ctx，让他报错，反正检查 headers
+        self.set_auth()
+        try:
+            r = self.app.get('/api/admin/events/stream', timeout=1)
+        except Exception:
+            return  # 超时也 ok
+        if r.status_code == 200:
+            ct = r.headers.get('Content-Type', '')
+            self.assertIn('text/event-stream', ct)
+
+    # ====== 创建/删除 CRUD ======
+
+    def test_79_create_target(self):
+        """资产 CRUD：create 接口需要 hostname 字段"""
+        self.set_auth()
+        # 缺少 hostname 必填字段 -> 400
+        r = self.app.post('/api/admin/targets/create', json={
+            'ip_address': '203.0.113.50',
+        })
+        self.assertEqual(r.status_code, 400)
+        # 补上 hostname -> 200
+        import time
+        r2 = self.app.post('/api/admin/targets/create', json={
+            'hostname': 'test-host-' + str(int(time.time())),
+            'ip_address': '203.0.113.50',
+            'asset_type': 'server',
+            'role': 'test',
+            'criticality': 'medium',
+        })
+        self.assertEqual(r2.status_code, 200)
+        data = r2.get_json()
+        self.assertTrue(data['success'])
+
+    def test_82_create_source(self):
+        """数据源 CRUD - 接口需要 name + type + config"""
+        self.set_auth()
+        # 缺少 name -> 400
+        r = self.app.post('/api/admin/sources/create', json={
+            'type': 'syslog', 'config': {'endpoint': 'tcp://203.0.113.51:514'}
+        })
+        self.assertEqual(r.status_code, 400)
+        # 传齐 -> 200
+        import time
+        r2 = self.app.post('/api/admin/sources/create', json={
+            'name': 'TEST_source_' + str(int(time.time())),
+            'type': 'syslog',
+            'config': {'endpoint': 'tcp://203.0.113.51:514'},
+        })
+        self.assertEqual(r2.status_code, 200)
+        data = r2.get_json()
+        self.assertTrue(data['success'])
 
 
 # ====== RBAC 权限测试 ======

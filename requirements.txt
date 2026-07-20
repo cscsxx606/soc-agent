@@ -27,6 +27,10 @@ cffi==2.1.0
 # === 多 Agent 引擎（可选，未启用 fallback）===
 crewai==1.11.1
 
+# === 可观测性（Prometheus 指标 /metrics）===
+prometheus-client==0.21.1
+psutil==6.1.1
+
 # === 可选依赖（注释保留）===
 # litellm  # CrewAI 多模型支持
 # reportlab  # PDF 报告

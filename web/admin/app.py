@@ -448,6 +448,9 @@ def register_apis():
     scheduler.register(app)
     notifications.register(app)
     pipelines.register(app)
+    # Prometheus 指标（不需要鉴权）
+    from metrics import register as metrics_register
+    metrics_register(app)
 
 # ============ 初始化 DB（Gunicorn 多进程通过文件锁保证只执行一次）============
 # 注意：这里没有 module-level 调用 init_db()

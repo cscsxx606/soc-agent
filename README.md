@@ -191,6 +191,12 @@ ENABLE_AUTO_RESPONSE=false  # 自动处置开关（默认关闭）
 
 ---
 
+## 📚 文档
+
+- 📖 [docs/OPERATIONS.md](docs/OPERATIONS.md) — 运维手册（部署/备份/升级/排错 SOP）
+- 🏗️ [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 系统架构、模块划分、数据流
+- 📌 [SKILL.md](SKILL.md) — OpenClaw 技能描述 (对本项目使用场景)
+
 ## 📄 License
 
 MIT License
