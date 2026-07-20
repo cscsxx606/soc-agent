@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}审计日志{% endblock %}
+{% block page_title %}审计日志{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+    <div class="stat-card">
+        <div class="label">总记录</div>
+        <div class="value" id="stat-total">-</div>
+    </div>
+    <div class="stat-card success">
+        <div class="label">成功</div>
+        <div class="value" id="stat-success">-</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="label">失败</div>
+        <div class="value" id="stat-failed">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">今日</div>
+        <div class="value" id="stat-today">-</div>
+    </div>
+</div>
+
+<div class="panel" style="padding:16px 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <input type="text" id="f-username" placeholder="👤 用户名" style="width:140px;">
+            <select id="f-module" style="width:140px;">
+                <option value="">📦 所有模块</option>
+                <option value="auth">🔐 认证</option>
+                <option value="sources">🔌 数据源</option>
+                <option value="agents">🤖 Agent</option>
+                <option value="playbooks">📚 Playbook</option>
+                <option value="targets">🎯 扫描目标</option>
+                <option value="users">👥 用户</option>
+                <option value="settings">⚙️ 设置</option>
+            </select>
+            <select id="f-result" style="width:120px;">
+                <option value="">📊 所有结果</option>
+                <option value="success">✅ 成功</option>
+                <option value="failed">❌ 失败</option>
+            </select>
+            <input type="date" id="f-date" style="width:140px;" title="选择日期">
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="loadLogs()">🔍 搜索</button>
+            <button class="secondary" onclick="resetFilters()">🔄 重置</button>
+            <button class="success" onclick="exportLogs()">📥 导出 CSV</button>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <h3>📜 审计记录 <span style="font-weight:normal;color:var(--text-muted);font-size:13px;">(共 <span id="audit-total">0</span> 条)</span></h3>
+    <div style="overflow-x:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>用户</th>
+                    <th>动作</th>
+                    <th>模块</th>
+                    <th>对象</th>
+                    <th>详情</th>
+                    <th>IP</th>
+                    <th>结果</th>
+                </tr>
+            </thead>
+            <tbody id="audit-tbody">
+                <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <!-- 分页 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <span style="color:var(--text-muted);font-size:12px;" id="page-info"></span>
+        <div style="display:flex;gap:6px;" id="pagination"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 1;
+let pageSize = 25;
+let allLogs = [];
+
+async function loadLogs() {
+    showLoading('#audit-tbody', 8);
+    const username = document.getElementById('f-username').value;
+    const module = document.getElementById('f-module').value;
+    const result = document.getElementById('f-result').value;
+    const date = document.getElementById('f-date').value;
+    const params = new URLSearchParams({username, module, result, date, limit: 500});
+
+    try {
+        const res = await api('/api/admin/audit/list?' + params);
+        if (!res || !res.success) {
+            showError('#audit-tbody', 8, (res && res.error) || '加载失败');
+            updateStats([]);
+            return;
+        }
+        
+        allLogs = res.logs || [];
+        updateStats(allLogs);
+        renderPage(1);
+        document.getElementById('audit-total').textContent = allLogs.length;
+    } catch (e) {
+        showError('#audit-tbody', 8, '异常: ' + e.message);
+    }
+}
+
+function updateStats(logs) {
+    document.getElementById('stat-total').textContent = logs.length;
+    document.getElementById('stat-success').textContent = logs.filter(l => l.result === 'success').length;
+    document.getElementById('stat-failed').textContent = logs.filter(l => l.result === 'failed').length;
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('stat-today').textContent = logs.filter(l => (l.timestamp || '').startsWith(today)).length;
+}
+
+function renderPage(page) {
+    currentPage = page;
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const pageData = allLogs.slice(start, end);
+    const totalPages = Math.ceil(allLogs.length / pageSize) || 1;
+    
+    document.getElementById('page-info').textContent = `第 ${page} 页，共 ${totalPages} 页 (${allLogs.length} 条)`;
+    renderPagination(totalPages);
+    
+    const tbody = document.getElementById('audit-tbody');
+    if (!pageData.length) {
+        showEmpty('#audit-tbody', 8, '暂无审计记录');
+        return;
+    }
+    
+    tbody.innerHTML = pageData.map((l, idx) => {
+        const badge = l.result === 'success' ? 'badge-success' : 'badge-danger';
+        const icon = l.result === 'success' ? '✅' : '❌';
+        return `
+            <tr style="animation:fadeIn 0.3s ${idx*0.03}s both;">
+                <td><span style="font-family:monospace;font-size:12px;">${escapeHtml((l.timestamp||'').slice(0,19).replace('T',' '))}</span></td>
+                <td><strong>${escapeHtml(l.username||'-')}</strong></td>
+                <td><span style="color:var(--accent);">${escapeHtml(l.action)}</span></td>
+                <td><span class="badge badge-info">${escapeHtml(l.module)}</span></td>
+                <td><code style="font-size:11px;">${escapeHtml(l.target||'-')}</code></td>
+                <td><span style="color:var(--text-muted);font-size:12px;">${escapeHtml(l.details||'-')}</span></td>
+                <td><span style="font-family:monospace;font-size:11px;color:var(--text-muted);">${escapeHtml(l.ip_address||'-')}</span></td>
+                <td><span class="badge ${badge}">${icon} ${l.result}</span></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderPagination(totalPages) {
+    const div = document.getElementById('pagination');
+    let html = `<button class="small" ${currentPage===1?'disabled':''} onclick="renderPage(${currentPage-1})">←</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+            html += `<button class="small ${i===currentPage?'':'secondary'}" onclick="renderPage(${i})">${i}</button>`;
+        } else if (i === currentPage - 2 || i === currentPage + 2) {
+            html += `<span style="color:var(--text-muted);">...</span>`;
+        }
+    }
+    html += `<button class="small" ${currentPage===totalPages?'disabled':''} onclick="renderPage(${currentPage+1})">→</button>`;
+    div.innerHTML = html;
+}
+
+function resetFilters() {
+    document.getElementById('f-username').value = '';
+    document.getElementById('f-module').value = '';
+    document.getElementById('f-result').value = '';
+    document.getElementById('f-date').value = '';
+    loadLogs();
+}
+
+async function exportLogs() {
+    const res = await fetch('/api/admin/audit/export', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'Accept': 'text/csv'},
+        body: JSON.stringify({}),
+        credentials: 'same-origin'
+    });
+    if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audit_logs_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('✓ 已导出审计日志', 'success');
+    } else {
+        toast('导出失败: HTTP ' + res.status, 'error');
+    }
+}
+
+// SSE 实时事件
+window.addEventListener('audit-event', e => {
+    const d = e.detail;
+    // 如果当前在第一页且没有日期筛选，追加到顶部
+    if (currentPage === 1 && !document.getElementById('f-date').value) {
+        const tbody = document.getElementById('audit-tbody');
+        if (!tbody) return;
+        const row = document.createElement('tr');
+        row.style.background = 'rgba(0,212,255,0.08)';
+        row.style.animation = 'flash 0.8s ease-out';
+        const badge = d.result === 'success' ? 'badge-success' : 'badge-danger';
+        const icon = d.result === 'success' ? '✅' : '❌';
+        row.innerHTML = `
+            <td><span style="font-family:monospace;font-size:12px;">${escapeHtml((d.timestamp||'').slice(0,19).replace('T',' '))}</span></td>
+            <td><strong>${escapeHtml(d.username||'-')}</strong></td>
+            <td><span style="color:var(--accent);">${escapeHtml(d.action)}</span></td>
+            <td><span class="badge badge-info">${escapeHtml(d.module)}</span></td>
+            <td><code style="font-size:11px;">${escapeHtml(d.target||'-')}</code></td>
+            <td><span style="color:var(--text-muted);font-size:12px;">-</span></td>
+            <td><span style="font-family:monospace;font-size:11px;color:var(--text-muted);">-</span></td>
+            <td><span class="badge ${badge}">${icon} ${d.result}</span></td>
+        `;
+        tbody.insertBefore(row, tbody.firstChild);
+        while (tbody.children.length > pageSize) {
+            tbody.lastChild.remove();
+        }
+        // 更新统计
+        const total = parseInt(document.getElementById('audit-total').textContent) || 0;
+        document.getElementById('audit-total').textContent = total + 1;
+        document.getElementById('stat-total').textContent = (parseInt(document.getElementById('stat-total').textContent) || 0) + 1;
+        if (d.result === 'success') {
+            document.getElementById('stat-success').textContent = (parseInt(document.getElementById('stat-success').textContent) || 0) + 1;
+        } else {
+            document.getElementById('stat-failed').textContent = (parseInt(document.getElementById('stat-failed').textContent) || 0) + 1;
+        }
+    }
+});
+
+// CSS 动画
+const style = document.createElement('style');
+style.textContent = `
+@keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+@keyframes flash { 0% { background:rgba(0,212,255,0.2); } 100% { background:rgba(0,212,255,0.08); } }
+`;
+document.head.appendChild(style);
+
+loadLogs();
+</script>
+{% endblock %}

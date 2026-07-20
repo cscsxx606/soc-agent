@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block title %}扫描目标{% endblock %}
+{% block page_title %}扫描目标管理{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+    <div class="stat-card">
+        <div class="label">总资产</div>
+        <div class="value" id="stat-total">-</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="label">核心资产</div>
+        <div class="value" id="stat-critical">-</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="label">重要资产</div>
+        <div class="value" id="stat-high">-</div>
+    </div>
+    <div class="stat-card success">
+        <div class="label">普通资产</div>
+        <div class="value" id="stat-normal">-</div>
+    </div>
+</div>
+
+<div class="panel" style="padding:16px 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input type="text" id="asset-search" placeholder="🔍 搜索主机名/IP..." style="width:220px;" onkeyup="if(event.key==='Enter')loadAssets()">
+            <select id="crit-filter" style="width:140px;" onchange="loadAssets()">
+                <option value="">所有重要性</option>
+                <option value="critical">🔴 核心</option>
+                <option value="high">🟠 重要</option>
+                <option value="medium">🟡 中等</option>
+                <option value="low">🟢 普通</option>
+            </select>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button class="success" onclick="showAddModal()">➕ 新增资产</button>
+            <button class="secondary" onclick="showImportModal()">📥 CSV 导入</button>
+            <button class="small" onclick="loadAssets()">🔄 刷新</button>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <h3>🎯 已注册资产</h3>
+    <div style="overflow-x:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>主机名</th>
+                    <th>IP</th>
+                    <th>类型</th>
+                    <th>角色</th>
+                    <th>业务</th>
+                    <th>重要性</th>
+                    <th>负责人</th>
+                    <th>标签</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="assets-tbody">
+                <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allAssets = [];
+
+async function loadAssets() {
+    showLoading('#assets-tbody', 9);
+    const search = document.getElementById('asset-search').value.toLowerCase();
+    const critFilter = document.getElementById('crit-filter').value;
+    
+    try {
+        const res = await api('/api/admin/targets/list');
+        if (!res.success) {
+            showError('#assets-tbody', 9, res.error || '加载失败');
+            return;
+        }
+        
+        allAssets = res.assets || [];
+        
+        // 客户端筛选
+        let filtered = allAssets;
+        if (search) {
+            filtered = filtered.filter(a => 
+                (a.hostname || '').toLowerCase().includes(search) ||
+                (a.ip_address || '').includes(search)
+            );
+        }
+        if (critFilter) {
+            filtered = filtered.filter(a => a.criticality === critFilter);
+        }
+        
+        updateStats(allAssets);
+        
+        const tbody = document.getElementById('assets-tbody');
+        if (filtered.length === 0) {
+            showEmpty('#assets-tbody', 9, '暂无资产');
+            return;
+        }
+        
+        tbody.innerHTML = filtered.map((a, idx) => {
+            const critColors = {critical:'var(--danger)',high:'var(--warning)',medium:'var(--accent)',low:'var(--success)'};
+            const critBadge = {critical:'badge-danger',high:'badge-warning',medium:'badge-info',low:'badge-success'};
+            const critLabel = {critical:'🔴 核心',high:'🟠 重要',medium:'🟡 中等',low:'🟢 普通'};
+            const color = critColors[a.criticality] || 'var(--text-muted)';
+            
+            return `
+                <tr style="animation:fadeIn 0.3s ${idx*0.03}s both;">
+                    <td>
+                        <strong>${escapeHtml(a.hostname)}</strong>
+                        <div style="font-size:11px;color:var(--text-muted);">ID: ${escapeHtml(a.id)}</div>
+                    </td>
+                    <td><code style="font-size:12px;">${escapeHtml(a.ip_address||'-')}</code></td>
+                    <td><span class="badge badge-info">${escapeHtml(a.asset_type)}</span></td>
+                    <td>${escapeHtml(a.role)}</td>
+                    <td>${escapeHtml(a.business_unit||'-')}</td>
+                    <td>
+                        <span class="badge ${critBadge[a.criticality]||'badge-info'}">${escapeHtml(critLabel[a.criticality]||a.criticality)}</span>
+                    </td>
+                    <td>${escapeHtml(a.owner||'-')}</td>
+                    <td>
+                        ${(a.tags||'').split(',').filter(x=>x).map(t => 
+                            `<span class="badge badge-info" style="margin-right:3px;font-size:10px;">${escapeHtml(t.trim())}</span>`
+                        ).join('')}
+                    </td>
+                    <td>
+                        <button class="small danger" onclick="deleteAsset(${a.id})" title="删除">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        showError('#assets-tbody', 9, '异常: ' + e.message);
+    }
+}
+
+function updateStats(assets) {
+    document.getElementById('stat-total').textContent = assets.length;
+    document.getElementById('stat-critical').textContent = assets.filter(a => a.criticality === 'critical').length;
+    document.getElementById('stat-high').textContent = assets.filter(a => a.criticality === 'high').length;
+    document.getElementById('stat-normal').textContent = assets.filter(a => a.criticality === 'medium' || a.criticality === 'low').length;
+}
+
+function showAddModal() {
+    showModal(`<h3>➕ 新增资产</h3>
+        <div class="form-cols-2">
+            <div class="form-row"><label>主机名 *</label><input id="a-hostname" placeholder="如 web-server-01"></div>
+            <div class="form-row"><label>IP 地址</label><input id="a-ip" placeholder="如 10.0.0.10"></div>
+        </div>
+        <div class="form-cols-2">
+            <div class="form-row">
+                <label>资产类型</label>
+                <select id="a-type" style="width:100%;">
+                    <option value="server">🖥️ 服务器</option>
+                    <option value="workstation">💻 工作站</option>
+                    <option value="network-device">🌐 网络设备</option>
+                    <option value="iot-device">📡 IoT 设备</option>
+                    <option value="container">📦 容器</option>
+                </select>
+            </div>
+            <div class="form-row"><label>角色</label><input id="a-role" placeholder="web-server, database, ..."></div>
+        </div>
+        <div class="form-cols-2">
+            <div class="form-row"><label>业务单元</label><input id="a-bu" placeholder="如 电商、研发"></div>
+            <div class="form-row">
+                <label>重要性</label>
+                <select id="a-crit" style="width:100%;">
+                    <option value="critical">🔴 核心 (核心业务/数据)</option>
+                    <option value="high" selected>🟠 重要 (生产环境)</option>
+                    <option value="medium">🟡 中等 (内部服务)</option>
+                    <option value="low">🟢 普通 (测试/开发)</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-cols-2">
+            <div class="form-row"><label>负责人</label><input id="a-owner" placeholder="如 ops-team"></div>
+            <div class="form-row"><label>标签</label><input id="a-tags" placeholder="逗号分隔，如 prod,linux,db"></div>
+        </div>
+        <div style="text-align:center;margin-top:20px;">
+            <button onclick="submitAsset()">💾 保存</button>
+            <button class="secondary" onclick="closeModal()">取消</button>
+        </div>
+    `);
+}
+
+async function submitAsset() {
+    const data = {
+        hostname: document.getElementById('a-hostname').value.trim(),
+        ip_address: document.getElementById('a-ip').value.trim(),
+        asset_type: document.getElementById('a-type').value,
+        role: document.getElementById('a-role').value.trim(),
+        business_unit: document.getElementById('a-bu').value.trim(),
+        criticality: document.getElementById('a-crit').value,
+        owner: document.getElementById('a-owner').value.trim(),
+        tags: document.getElementById('a-tags').value
+    };
+    if (!data.hostname) { toast('主机名必填', 'error'); return; }
+    const res = await api('/api/admin/targets/create', {method: 'POST', body: JSON.stringify(data)});
+    if (res.success) { toast('✓ 已添加'); closeModal(); loadAssets(); }
+    else toast('✗ ' + res.error, 'error');
+}
+
+function showImportModal() {
+    showModal(`<h3>📥 CSV 批量导入</h3>
+        <p style="color:var(--text-muted);font-size:12px;">格式：hostname,ip_address,asset_type,role,business_unit,criticality,owner,tags</p>
+        <textarea id="csv-content" style="width:100%;height:250px;background:var(--bg-input);color:var(--accent);font-family:monospace;font-size:12px;padding:15px;border-radius:var(--radius-sm);border:1px solid var(--border);">hostname,ip_address,asset_type,role,business_unit,criticality,owner,tags
+web-02,10.0.0.11,server,web-server,电商,critical,ops,prod
+app-01,10.0.0.12,server,app-server,电商,high,ops,prod
+app-02,10.0.0.13,server,app-server,电商,high,ops,prod
+app-03,10.0.0.14,server,app-server,电商,high,ops,prod
+db-01,10.0.0.21,server,database,电商,critical,dba,prod,pii
+db-02,10.0.0.22,server,database,电商,critical,dba,prod,pii
+redis-01,10.0.0.31,server,cache,电商,high,ops,prod
+lb-01,10.0.0.41,network-device,load-balancer,电商,high,ops,prod
+vpn-01,10.0.0.51,network-device,vpn-gateway,运维,critical,ops,prod
+test-01,10.0.99.1,server,test-server,研发,low,dev,test</textarea>
+        <div style="background:rgba(0,212,255,0.05);padding:10px;border-radius:6px;margin-top:12px;">
+            <span style="color:var(--accent);font-size:12px;">💡 提示：第一行为表头，必填字段为 hostname</span>
+        </div>
+        <div style="text-align:center;margin-top:16px;">
+            <button onclick="submitImport()">📥 导入</button>
+            <button class="secondary" onclick="closeModal()">取消</button>
+        </div>
+    `);
+}
+
+async function submitImport() {
+    const csv = document.getElementById('csv-content').value;
+    const res = await api('/api/admin/targets/import', {method: 'POST', body: JSON.stringify({csv})});
+    if (res.success) { 
+        toast(`✓ 导入 ${res.added} 个资产`); 
+        closeModal(); 
+        loadAssets(); 
+    } else {
+        toast('导入失败: ' + (res.error || ''), 'error');
+    }
+}
+
+async function deleteAsset(id) {
+    if (!confirm('确定删除此资产?\n\n此操作不可恢复！')) return;
+    const res = await api(`/api/admin/targets/delete/${id}`, {method: 'POST'});
+    if (res.success) { toast('✓ 已删除'); loadAssets(); }
+}
+
+// CSS 动画
+const style = document.createElement('style');
+style.textContent = `
+@keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+`;
+document.head.appendChild(style);
+
+loadAssets();
+</script>
+{% endblock %}

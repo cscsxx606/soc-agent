@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - SOC 管理后台{% endblock %}
+{% block page_title %}仪表盘{% endblock %}
+
+{% block content %}
+<!-- 操作栏 -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+    <div style="color:var(--text-muted);font-size:13px;">
+        <span id="dashboard-last-refresh">最后更新：刚刚</span>
+    </div>
+    <div class="action-bar">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer;">
+            <span>🔄 自动刷新</span>
+            <label class="toggle">
+                <input type="checkbox" id="auto-refresh-toggle" checked onchange="toggleAutoRefresh()">
+                <span class="slider"></span>
+            </label>
+        </label>
+        <button onclick="loadDashboardCharts()" id="refresh-btn" data-tooltip="手动刷新数据">🔄 刷新</button>
+    </div>
+</div>
+
+<div class="stat-grid" style="margin-bottom:24px;">
+    <div class="stat-card">
+        <div class="trend up">↑ 12%</div>
+        <div class="label">告警总数 (24h)</div>
+        <div class="value" id="stat-alerts-total">-</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="trend up">↑ 5%</div>
+        <div class="label">高危告警</div>
+        <div class="value" id="stat-critical">-</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="trend down">↓ 8%</div>
+        <div class="label">狩猎执行</div>
+        <div class="value" id="stat-hunts">-</div>
+    </div>
+    <div class="stat-card success">
+        <div class="trend up">↑ 15%</div>
+        <div class="label">已处置</div>
+        <div class="value" id="stat-resolved">-</div>
+    </div>
+</div>
+
+<div class="chart-grid">
+    <div class="chart-card">
+        <h4>📈 24小时告警趋势</h4>
+        <div id="chart-trend" class="chart-container"></div>
+    </div>
+    <div class="chart-card">
+        <h4>🥧 优先级分布</h4>
+        <div id="chart-priority" class="chart-container"></div>
+    </div>
+</div>
+
+<div class="chart-grid">
+    <div class="chart-card">
+        <h4>🔥 攻击类型 Top 10</h4>
+        <div id="chart-attack" class="chart-container"></div>
+    </div>
+    <div class="chart-card">
+        <h4>🌍 Top 攻击源</h4>
+        <div id="chart-source" class="chart-container"></div>
+    </div>
+</div>
+
+<div class="chart-grid">
+    <div class="chart-card">
+        <h4>⚡ Agent 性能对比</h4>
+        <div id="chart-agent" class="chart-container"></div>
+    </div>
+    <div class="chart-card">
+        <h4>🛡️ 漏洞风险分布</h4>
+        <div id="chart-vuln" class="chart-container"></div>
+    </div>
+</div>
+
+<div class="chart-grid-equal">
+    <div class="chart-card">
+        <h4>🛡️ 应急响应动作统计</h4>
+        <div id="chart-response" class="chart-container"></div>
+    </div>
+    <div class="chart-card">
+        <h4>📜 实时事件流</h4>
+        <div class="stream-container" id="event-stream">
+            <div style="text-align:center;color:#8a93a8;padding:40px 10px;font-size:13px;">
+                等待实时事件...
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const charts = {};
+let autoRefreshTimer = null;
+let dashboardRefreshCount = 0;
+
+function toggleAutoRefresh() {
+    if (document.getElementById('auto-refresh-toggle').checked) {
+        startAutoRefresh();
+        toast('已开启自动刷新');
+    } else {
+        stopAutoRefresh();
+        toast('已关闭自动刷新');
+    }
+}
+
+function startAutoRefresh() {
+    stopAutoRefresh();
+    autoRefreshTimer = setInterval(function() {
+        loadDashboardCharts(true);
+    }, 30000); // 每30秒自动刷新
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+}
+
+async function loadDashboardCharts(silent) {
+    const btn = document.getElementById('refresh-btn');
+    if (!silent) {
+        btn.disabled = true;
+        btn.textContent = '⏳ 刷新中...';
+    }
+
+    try {
+        const res = await api('/api/admin/dashboard/charts');
+        if (!res || !res.success) {
+            if (!silent) {
+                btn.disabled = false;
+                btn.textContent = '🔄 刷新';
+                toast('数据加载失败', 'error');
+            }
+            return;
+        }
+        const c = res.charts;
+
+        // 更新统计卡片
+        const total = c.alert_trend_24h.total.reduce((a,b)=>a+b, 0);
+        const critical = c.alert_trend_24h.critical.reduce((a,b)=>a+b, 0);
+        document.getElementById('stat-alerts-total').textContent = total || (c.real_data ? total : '暂无数据');
+        document.getElementById('stat-critical').textContent = critical;
+        document.getElementById('stat-hunts').textContent = res.hunts_done || c.hunts_done || c.real_data?.hunts || '-';
+        document.getElementById('stat-resolved').textContent = res.resolved || c.resolved || c.real_data?.resolved || '-';
+        
+        // 更新时间
+        const now = new Date();
+        document.getElementById('dashboard-last-refresh').textContent = '最后更新：' +
+            now.toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+        dashboardRefreshCount++;
+        renderTrendChart(c);
+        renderPieChart('chart-priority', c.priority_distribution);
+        renderBarChartHorizontal('chart-attack', c.attack_type_top10);
+        renderPieChart('chart-source', c.source_ip_top.map(s=>({name:escapeHtml(s.ip)+' ('+escapeHtml(s.country)+')',value:s.count})));
+        renderAgentChart(c);
+        renderPieChart('chart-vuln', c.vuln_distribution);
+        renderResponseChart(c);
+
+        if (!silent) {
+            btn.disabled = false;
+            btn.textContent = '🔄 刷新';
+            toast('数据已更新');
+        }
+    } catch (e) {
+        if (!silent) {
+            btn.disabled = false;
+            btn.textContent = '🔄 刷新';
+            toast('加载失败: ' + e.message, 'error');
+        }
+        console.error('loadDashboardCharts', e);
+    }
+}
+
+function animateNumber(elId, target) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const current = parseInt(el.textContent) || 0;
+    if (current === target) return;
+    el.textContent = target;
+    el.classList.remove('animate-count');
+    void el.offsetWidth; // trigger reflow
+    el.classList.add('animate-count');
+}
+
+// ===== 通用图表渲染函数 =====
+function getChart(elId) {
+    if (charts[elId]) {
+        try { charts[elId].resize(); } catch(e) {}
+        return charts[elId];
+    }
+    charts[elId] = echarts.init(document.getElementById(elId));
+    return charts[elId];
+}
+
+function renderTrendChart(c) {
+    const chart = getChart('chart-trend');
+    chart.setOption({
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: '#1a2033',
+            borderColor: '#2a3147',
+            textStyle: {color: '#e0e6ed'}
+        },
+        legend: {
+            data: ['全部', 'Critical', 'High', 'Medium', 'Low'],
+            textStyle: {color: '#8a93a8'}
+        },
+        grid: {left: '3%', right: '4%', bottom: '3%', containLabel: true},
+        xAxis: {
+            type: 'category',
+            data: c.alert_trend_24h.hours.map(h => h + ':00'),
+            axisLine: {lineStyle: {color: '#2a3147'}},
+            axisLabel: {color: '#8a93a8'}
+        },
+        yAxis: {
+            type: 'value',
+            axisLine: {lineStyle: {color: '#2a3147'}},
+            splitLine: {lineStyle: {color: '#1a2033'}},
+            axisLabel: {color: '#8a93a8'}
+        },
+        series: [
+            {
+                name: '全部', type: 'line', smooth: true,
+                data: c.alert_trend_24h.total,
+                itemStyle: {color: '#00d4ff'},
+                areaStyle: {
+                    color: {
+                        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                        colorStops: [
+                            {offset: 0, color: 'rgba(0,212,255,0.25)'},
+                            {offset: 1, color: 'rgba(0,212,255,0.02)'}
+                        ]
+                    }
+                },
+                symbol: 'circle',
+                symbolSize: 6,
+                animationDuration: 1000,
+                animationEasing: 'elasticOut'
+            },
+            {name: 'Critical', type: 'line', smooth: true, data: c.alert_trend_24h.critical, itemStyle: {color: '#ff4757'}, symbol: 'diamond', symbolSize: 4},
+            {name: 'High', type: 'line', smooth: true, data: c.alert_trend_24h.high, itemStyle: {color: '#ffa502'}, symbol: 'none'},
+            {name: 'Medium', type: 'line', smooth: true, data: c.alert_trend_24h.medium, itemStyle: {color: '#a55eea'}, symbol: 'none'},
+            {name: 'Low', type: 'line', smooth: true, data: c.alert_trend_24h.low, itemStyle: {color: '#8a93a8'}, symbol: 'none'}
+        ]
+    });
+}
+
+function renderPieChart(elId, data) {
+    const chart = getChart(elId);
+    chart.setOption({
+        tooltip: {trigger: 'item', backgroundColor: '#1a2033'},
+        legend: {bottom: 0, textStyle: {color: '#8a93a8'}},
+        series: [{
+            type: 'pie',
+            radius: ['40%', '70%'],
+            center: ['50%', '45%'],
+            data: data,
+            label: {
+                color: '#e0e6ed',
+                formatter: '{b}\n{d}%'
+            },
+            itemStyle: {
+                borderRadius: 4,
+                borderColor: '#131825',
+                borderWidth: 2
+            },
+            animationDuration: 800,
+            animationEasing: 'cubicOut'
+        }]
+    });
+}
+
+function renderBarChartHorizontal(elId, data) {
+    const chart = getChart(elId);
+    const reversed = (data || []).slice().reverse();
+    chart.setOption({
+        tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}},
+        grid: {left: '3%', right: '4%', bottom: '3%', containLabel: true},
+        xAxis: {
+            type: 'value',
+            axisLine: {lineStyle: {color: '#2a3147'}},
+            axisLabel: {color: '#8a93a8'}
+        },
+        yAxis: {
+            type: 'category',
+            data: reversed.map(d => d.name),
+            axisLine: {lineStyle: {color: '#2a3147'}},
+            axisLabel: {color: '#8a93a8'}
+        },
+        series: [{
+            type: 'bar',
+            data: reversed.map(d => ({
+                value: d.value,
+                itemStyle: {
+                    color: {
+                        type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
+                        colorStops: [
+                            {offset: 0, color: '#00d4ff'},
+                            {offset: 1, color: '#ff4757'}
+                        ]
+                    }
+                }
+            })),
+            label: {
+                show: true,
+                position: 'right',
+                color: '#e0e6ed'
+            },
+            barMaxWidth: 24,
+            animationDuration: 800
+        }]
+    });
+}
+
+function renderAgentChart(c) {
+    const chart = getChart('chart-agent');
+    chart.setOption({
+        tooltip: {trigger: 'axis'},
+        legend: {
+            data: ['调用次数', '成功率(%)', '平均延迟(ms)', 'Token消耗'],
+            textStyle: {color: '#8a93a8'}
+        },
+        grid: {left: '3%', right: '4%', bottom: '3%', containLabel: true},
+        xAxis: {
+            type: 'category',
+            data: c.agent_performance.agents,
+            axisLine: {lineStyle: {color: '#2a3147'}},
+            axisLabel: {color: '#8a93a8', rotate: 15}
+        },
+        yAxis: {
+            type: 'value',
+            axisLine: {lineStyle: {color: '#2a3147'}},
+            splitLine: {lineStyle: {color: '#1a2033'}},
+            axisLabel: {color: '#8a93a8'}
+        },
+        series: [
+            {name: '调用次数', type: 'bar', data: c.agent_performance.executions, itemStyle: {color: '#00d4ff'}, barMaxWidth: 16},
+            {name: '成功率(%)', type: 'bar', data: c.agent_performance.success_rate, itemStyle: {color: '#00ff88'}, barMaxWidth: 16},
+            {name: '平均延迟(ms)', type: 'bar', data: c.agent_performance.avg_latency_ms, itemStyle: {color: '#ffa502'}, barMaxWidth: 16},
+            {name: 'Token消耗', type: 'bar', data: c.agent_performance.tokens_consumed, itemStyle: {color: '#ff4757'}, barMaxWidth: 16}
+        ]
+    });
+}
+
+function renderResponseChart(c) {
+    const chart = getChart('chart-response');
+    const data = Object.entries(c.response_actions || {});
+    const colors = ['#00d4ff', '#ff4757', '#ffa502', '#00ff88', '#8a93a8', '#a55eea', '#a78bfa'];
+    chart.setOption({
+        tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}},
+        grid: {left: '3%', right: '4%', bottom: '3%', containLabel: true},
+        xAxis: {
+            type: 'category',
+            data: data.map(d => d[0]),
+            axisLine: {lineStyle: {color: '#2a3147'}},
+            axisLabel: {color: '#8a93a8', rotate: 30}
+        },
+        yAxis: {
+            type: 'value',
+            axisLine: {lineStyle: {color: '#2a3147'}},
+            splitLine: {lineStyle: {color: '#1a2033'}},
+            axisLabel: {color: '#8a93a8'}
+        },
+        series: [{
+            type: 'bar',
+            data: data.map((d, i) => ({
+                value: d[1],
+                itemStyle: {
+                    color: colors[i % colors.length],
+                    borderRadius: [5, 5, 0, 0]
+                }
+            })),
+            label: {
+                show: true,
+                position: 'top',
+                color: '#e0e6ed'
+            },
+            animationDuration: 600
+        }]
+    });
+}
+
+// ===== 实时事件流 =====
+function appendStreamItem(data) {
+    const container = document.getElementById('event-stream');
+    if (!container) return;
+    // 清除空状态
+    if (container.children.length === 1 && container.children[0].querySelector && container.children[0].querySelector('*[style*="waiting"]')) {
+        container.innerHTML = '';
+    }
+    const item = document.createElement('div');
+    item.className = 'stream-item ' + (data.result || '') + ' new fade-in';
+    const time = (data.timestamp || '').slice(11, 19);
+    const icon = data.result === 'success' ? '✅' : data.result === 'failed' ? '❌' : '📋';
+    item.innerHTML = `<span class="time">${escapeHtml(time)}</span> ${icon} <span class="user">${escapeHtml(data.username || '-')}</span> <span class="action">${escapeHtml(data.action)}</span> <span style="color:#8a93a8">@${escapeHtml(data.module)}${data.target ? ' / ' + escapeHtml(data.target) : ''}</span>`;
+    container.insertBefore(item, container.firstChild);
+    while (container.children.length > 50) {
+        container.lastChild.remove();
+    }
+    setTimeout(function() {
+        item.classList.remove('new');
+    }, 2000);
+}
+
+window.addEventListener('audit-event', function(e) {
+    appendStreamItem(e.detail);
+});
+
+// ===== 窗口大小变化自适应 =====
+window.addEventListener('resize', function() {
+    Object.values(charts).forEach(function(c) {
+        try { c && c.resize(); } catch(e) {}
+    });
+});
+
+// ===== 启动 =====
+loadDashboardCharts();
+startAutoRefresh();
+</script>
+{% endblock %}

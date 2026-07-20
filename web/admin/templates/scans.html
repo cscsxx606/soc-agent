@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% block title %}主动扫描中心{% endblock %}
+{% block page_title %}🔍 主动扫描中心{% endblock %}
+
+{% block content %}
+<!-- 顶部状态条 -->
+<div id="stats-bar" class="stat-grid" style="margin-bottom:20px;"></div>
+
+<!-- 主功能区 -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+    <!-- 左侧：扫描启动 -->
+    <div>
+        <div class="panel">
+            <h3>🚀 启动扫描</h3>
+            <p style="color:#8a93a8;font-size:13px;margin-bottom:15px;">
+                ⚠️ <strong style="color:#ffa502;">法律声明</strong>：主动扫描涉及法律风险，请仅扫描有授权的目标
+            </p>
+
+            <div class="form-row">
+                <label>目标 IP / 域名 *</label>
+                <input id="scan-ip" placeholder="如 10.0.0.10 或 scanme.nmap.org">
+            </div>
+            <div class="form-row">
+                <label>主机名（可选）</label>
+                <input id="scan-hostname" placeholder="如 prod-web-01">
+            </div>
+            <div class="form-row">
+                <label>资产重要性</label>
+                <select id="scan-criticality">
+                    <option value="low">low - 低</option>
+                    <option value="medium" selected>medium - 中</option>
+                    <option value="high">high - 高</option>
+                    <option value="critical">critical - 关键</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>扫描选项</label>
+                <label style="display:block;margin:5px 0;">
+                    <input type="checkbox" id="scan-web" checked> 启用 Web 漏洞扫描（HTTP 服务）
+                </label>
+                <label style="display:block;margin:5px 0;">
+                    <input type="checkbox" id="scan-service-id" checked> 启用服务识别（HTTP 头）
+                </label>
+            </div>
+
+            <div id="auth-check-result" style="margin:15px 0;padding:10px;border-radius:5px;display:none;"></div>
+
+            <div style="display:flex;gap:10px;">
+                <button onclick="checkAuth()" class="secondary">🔍 检查授权</button>
+                <button onclick="startScan()" id="start-scan-btn" disabled>🚀 启动扫描</button>
+            </div>
+            <div id="scan-progress" style="margin-top:15px;display:none;"></div>
+        </div>
+
+        <div class="panel">
+            <h3>📋 授权白名单</h3>
+            <p style="color:#8a93a8;font-size:13px;margin-bottom:10px;">
+                可扫描的 IP / 网段。系统默认允许 RFC 1918 私网 + scanme.nmap.org 演示目标。
+            </p>
+            <table>
+                <thead>
+                    <tr><th>IP / CIDR</th><th>标签</th><th>范围</th><th>操作</th></tr>
+                </thead>
+                <tbody id="whitelist-tbody">
+                    <tr><td colspan="4" style="text-align:center;color:#8a93a8;">加载中...</td></tr>
+                </tbody>
+            </table>
+            <div style="margin-top:10px;">
+                <input id="wl-ip" placeholder="10.0.0.0/24" style="width:200px;">
+                <input id="wl-label" placeholder="标签" style="width:150px;margin-left:5px;">
+                <button onclick="addWhitelist()" style="margin-left:5px;">➕ 添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：扫描历史和结果 -->
+    <div>
+        <div class="panel">
+            <h3>📜 扫描历史</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>任务ID</th><th>目标</th><th>风险</th><th>端口</th><th>状态</th><th>时间</th><th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tasks-tbody">
+                    <tr><td colspan="7" style="text-align:center;color:#8a93a8;">加载中...</td></tr>
+                </tbody>
+            </table>
+            <button onclick="loadTasks()" class="secondary" style="margin-top:10px;">🔄 刷新</button>
+        </div>
+
+        <div id="result-panel" class="panel" style="display:none;">
+            <h3>🔬 扫描结果详情</h3>
+            <div id="result-content"></div>
+            <button onclick="closeResult()" class="secondary" style="margin-top:15px;">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- 底部：后端工具状态 -->
+<div class="panel" style="margin-top:20px;">
+    <h3>🔧 后端工具状态（轻量级 + 专业级预留）</h3>
+    <p style="color:#8a93a8;font-size:12px;margin-bottom:10px;">
+        当前使用轻量级模式（Python socket + requests）。检测到专业工具后可自动启用更深入的扫描。
+    </p>
+    <div id="tools-status"></div>
+    <pre style="background:#0a0e1a;padding:12px;border-radius:5px;color:#8a93a8;font-size:11px;margin-top:10px;">
+# 专业工具激活命令（未来一键启用）：
+brew install nmap          # 端口扫描业界标准
+brew install nuclei        # 漏洞模板库 5000+ 检测项
+brew install sqlmap        # SQL 注入深度探测
+
+激活后系统将自动检测并切换到专业模式，无需修改代码。
+    </pre>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentAuthorized = false;
+let currentIp = '';
+
+async function loadStats() {
+    const res = await api('/api/admin/scans/stats');
+    if (!res || !res.success) return;
+    const s = res.stats;
+    document.getElementById('stats-bar').innerHTML = `
+        <div class="stat-card"><div class="label">总扫描</div><div class="value">${s.total}</div></div>
+        <div class="stat-card success"><div class="label">已完成</div><div class="value">${s.completed}</div></div>
+        <div class="stat-card warning"><div class="label">进行中</div><div class="value">${s.running}</div></div>
+        <div class="stat-card danger"><div class="label">高危</div><div class="value">${s.high_risk}</div></div>
+        <div class="stat-card danger"><div class="label">严重</div><div class="value">${s.critical}</div></div>
+    `;
+
+    // 工具状态
+    const tools = s.tools || {};
+    document.getElementById('tools-status').innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;">
+            <div class="panel" style="margin:0;text-align:center;">
+                <div style="font-size:24px;">${tools.python_builtin ? '✅' : '❌'}</div>
+                <strong>Python 内置</strong><br>
+                <small style="color:#8a93a8;">当前模式（轻量级）</small>
+            </div>
+            <div class="panel" style="margin:0;text-align:center;">
+                <div style="font-size:24px;">${tools.nmap ? '✅' : '⬜'}</div>
+                <strong>nmap</strong><br>
+                <small style="color:#8a93a8;">${tools.nmap ? '已安装' : '未安装'}</small>
+            </div>
+            <div class="panel" style="margin:0;text-align:center;">
+                <div style="font-size:24px;">${tools.nuclei ? '✅' : '⬜'}</div>
+                <strong>nuclei</strong><br>
+                <small style="color:#8a93a8;">${tools.nuclei ? '已安装' : '未安装'}</small>
+            </div>
+            <div class="panel" style="margin:0;text-align:center;">
+                <div style="font-size:24px;">${tools.sqlmap ? '✅' : '⬜'}</div>
+                <strong>sqlmap</strong><br>
+                <small style="color:#8a93a8;">${tools.sqlmap ? '已安装' : '未安装'}</small>
+            </div>
+        </div>
+    `;
+}
+
+async function loadWhitelist() {
+    showLoading('#whitelist-tbody', 4);
+    const res = await api('/api/admin/scans/whitelist/list');
+    if (!res || !res.success || !res.whitelist || res.whitelist.length === 0) {
+        showEmpty('#whitelist-tbody', 4, '暂无白名单');
+        return;
+    }
+    document.getElementById('whitelist-tbody').innerHTML = res.whitelist.map(w => `
+        <tr>
+            <td><code>${escapeHtml(w.ip_or_cidr)}</code></td>
+            <td>${escapeHtml(w.label || '-')}</td>
+            <td><span class="badge badge-info">${escapeHtml(w.scope)}</span></td>
+            <td>
+                ${w.scope === 'authorized_demo' || w.scope === 'internal' || w.scope === 'local' ?
+                    '<span style="color:#8a93a8;font-size:11px;">系统默认</span>' :
+                    `<button class="small danger" onclick="deleteWhitelist(${w.id})">删除</button>`}
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function deleteWhitelist(id) {
+    if (!confirm('确认删除？')) return;
+    const res = await api(`/api/admin/scans/whitelist/delete/${id}`, {method:'POST'});
+    if (res && res.success) {
+        toast('已删除');
+        loadWhitelist();
+    }
+}
+
+async function addWhitelist() {
+    const ip = document.getElementById('wl-ip').value.trim();
+    const label = document.getElementById('wl-label').value.trim();
+    if (!ip) { toast('请输入 IP/CIDR', 'error'); return; }
+    const res = await api('/api/admin/scans/whitelist/add', {
+        method:'POST', body: JSON.stringify({ip_or_cidr: ip, label: label, scope: 'custom'})
+    });
+    if (res && res.success) {
+        toast('✓ 已添加');
+        document.getElementById('wl-ip').value = '';
+        document.getElementById('wl-label').value = '';
+        loadWhitelist();
+    } else toast('添加失败: ' + ((res && res.error) || ''), 'error');
+}
+
+async function checkAuth() {
+    currentIp = document.getElementById('scan-ip').value.trim();
+    if (!currentIp) { toast('请输入 IP', 'error'); return; }
+    const div = document.getElementById('auth-check-result');
+    div.style.display = 'block';
+    div.innerHTML = '⏳ 检查中...';
+    const res = await api('/api/admin/scans/check-auth', {
+        method:'POST', body: JSON.stringify({ip: currentIp})
+    });
+    if (!res) { div.innerHTML = '<p style="color:#ff4757;">请求失败</p>'; return; }
+    currentAuthorized = res.authorized;
+    if (res.authorized) {
+        div.style.background = 'rgba(0,255,136,0.1)';
+        div.style.borderLeft = '3px solid #00ff88';
+        div.innerHTML = '✅ <strong>' + escapeHtml(res.ip) + '</strong> 已在授权白名单内，可以扫描';
+        document.getElementById('start-scan-btn').disabled = false;
+    } else {
+        div.style.background = 'rgba(255,71,87,0.1)';
+        div.style.borderLeft = '3px solid #ff4757';
+        div.innerHTML = '❌ <strong>' + escapeHtml(res.ip) + '</strong> 不在白名单内。请先在下方添加此目标。';
+        document.getElementById('start-scan-btn').disabled = true;
+    }
+}
+
+async function startScan() {
+    if (!currentAuthorized) {
+        await checkAuth();
+        if (!currentAuthorized) return;
+    }
+    const btn = document.getElementById('start-scan-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 扫描中...';
+
+    const data = {
+        target_ip: currentIp,
+        target_hostname: document.getElementById('scan-hostname').value.trim(),
+        criticality: document.getElementById('scan-criticality').value,
+        enable_web_scan: document.getElementById('scan-web').checked,
+        scan_type: 'asset'
+    };
+    const progress = document.getElementById('scan-progress');
+    progress.style.display = 'block';
+    progress.innerHTML = '<p style="color:#ffa502;">⏳ 正在扫描 ' + escapeHtml(currentIp) + '（含端口扫描 + Web 漏洞检测，预计 30s-3min）...</p>';
+
+    try {
+        const res = await api('/api/admin/scans/start', {method:'POST', body: JSON.stringify(data)});
+        if (!res) { progress.innerHTML = '<p style="color:#ff4757;">请求失败</p>'; return; }
+        if (res.success) {
+            // 使用 DOM API 避免 XSS
+            progress.innerHTML = '<p style="color:#00ff88;">✅ 扫描完成！风险分: <strong></strong> (<span></span>)</p>';
+            progress.querySelector('strong').textContent = res.risk_score;
+            progress.querySelector('span').textContent = res.risk_level;
+            loadTasks();
+            loadStats();
+            showResult(res.result);
+        } else {
+            progress.innerHTML = '<p style="color:#ff4757;">❌ 扫描失败: <span></span></p>';
+            progress.querySelector('span').textContent = res.error || '';
+        }
+    } catch (e) {
+        progress.innerHTML = '<p style="color:#ff4757;">异常: <span></span></p>';
+        progress.querySelector('span').textContent = e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 启动扫描';
+    }
+}
+
+async function loadTasks() {
+    showLoading('#tasks-tbody', 7);
+    const res = await api('/api/admin/scans/list');
+    if (!res || !res.success || !res.tasks || res.tasks.length === 0) {
+        showEmpty('#tasks-tbody', 7, '暂无扫描任务 - 输入目标启动第一次扫描');
+        return;
+    }
+    document.getElementById('tasks-tbody').innerHTML = res.tasks.map(t => {
+        const levelClass = {critical: 'danger', high: 'danger', medium: 'warning', low: 'success'}[t.risk_level] || 'info';
+        const statusBadge = t.status === 'completed' ? 'badge-success' : t.status === 'running' ? 'badge-warning' : 'badge-danger';
+        return `<tr>
+            <td><code style="font-size:10px;">${escapeHtml(t.task_id.substring(0, 20))}...</code></td>
+            <td><strong>${escapeHtml(t.target_hostname || t.target_ip)}</strong><br><small style="color:#8a93a8;">${escapeHtml(t.target_ip)}</small></td>
+            <td><span class="badge badge-${levelClass}">${escapeHtml(t.risk_level)} (${t.risk_score})</span></td>
+            <td>${escapeHtml(t.ports_open || 0)}</td>
+            <td><span class="badge ${statusBadge}">${escapeHtml(t.status)}</span></td>
+            <td><small>${escapeHtml((t.completed_at || t.started_at || '').substring(0, 19))}</small></td>
+            <td>
+                ${t.status === 'completed' ? `
+                    <button class="small" onclick="viewResult('${t.task_id}')">查看</button>
+                    <button class="small" onclick="window.open('/api/admin/scans/report/${t.task_id}/preview','_blank')">预览报告</button>
+                    <button class="small" onclick="exportReport('${t.task_id}','html')">导出 HTML</button>
+                    <button class="small" onclick="exportReport('${t.task_id}','zip')">导出 ZIP</button>
+                    <button class="small" onclick="exportReport('${t.task_id}','pdf')">导出 PDF</button>
+                ` : ''}
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function viewResult(taskId) {
+    const res = await api(`/api/admin/scans/result/${taskId}`);
+    if (!res || !res.success) { toast('结果已过期（仅保留最近 100 条）', 'error'); return; }
+    showResult(res.result);
+}
+
+function exportReport(taskId, format) {
+    window.location.href = `/api/admin/scans/report/${taskId}/${format}`;
+    toast(`下载 ${format.toUpperCase()} 报告...`);
+}
+
+function showResult(r) {
+    const panel = document.getElementById('result-panel');
+    const content = document.getElementById('result-content');
+    const portsHtml = (r.ports_open || []).map(p => `
+        <tr>
+            <td><strong>${escapeHtml(p.port)}</strong></td>
+            <td><span class="badge badge-info">${escapeHtml(p.service)}</span></td>
+            <td><span class="badge badge-success">${escapeHtml(p.state)}</span></td>
+            <td>${escapeHtml(p.response_time_ms)}ms</td>
+            <td><code style="font-size:10px;">${escapeHtml((p.banner || '').substring(0, 60))}</code></td>
+        </tr>
+    `).join('');
+
+    const servicesHtml = (r.services || []).map(s => `
+        <div class="panel" style="margin:10px 0;background:#0d1320;">
+            <strong>${escapeHtml(s.url)}</strong>
+            <span class="badge badge-info">${escapeHtml(s.scheme.toUpperCase())}</span>
+            <span class="badge ${s.status_code < 400 ? 'badge-success' : 'badge-danger'}">${escapeHtml(s.status_code)}</span>
+            ${s.title ? `<p style="color:#8a93a8;font-size:12px;margin:5px 0;">📄 ${escapeHtml(s.title)}</p>` : ''}
+            <p style="color:#8a93a8;font-size:11px;">
+                技术栈: ${escapeHtml((s.tech_stack || []).join(', ') || 'unknown')} ·
+                Server: ${escapeHtml(s.server || '-')} ·
+                Powered-By: ${escapeHtml(s.powered_by || '-')}
+            </p>
+            ${s.paths_found && Object.keys(s.paths_found).length > 0 ? `
+                <details><summary style="color:#00d4ff;cursor:pointer;">路径探测 (${Object.keys(s.paths_found).length})</summary>
+                <table style="margin-top:5px;font-size:11px;">
+                    ${Object.entries(s.paths_found).map(([p, info]) =>
+                        `<tr><td><code>${escapeHtml(p)}</code></td><td>${escapeHtml(info.label)}</td><td>${escapeHtml(info.status)}</td></tr>`
+                    ).join('')}
+                </table>
+                </details>
+            ` : ''}
+        </div>
+    `).join('');
+
+    const webHtml = (r.web_findings || []).map(w => `
+        <div class="panel" style="margin:10px 0;background:#0d1320;">
+            <strong>${escapeHtml(w.url)}</strong>
+            <span class="badge badge-${w.risk_level === 'critical' ? 'danger' : w.risk_level === 'high' ? 'danger' : 'warning'}">${escapeHtml(w.risk_level)} (${w.risk_score})</span>
+            ${(w.findings || []).map(f => `
+                <div style="margin:8px 0;padding:8px;background:#0a0e1a;border-radius:5px;border-left:3px solid ${f.severity === 'critical' ? '#ff4757' : f.severity === 'high' ? '#ffa502' : '#00d4ff'};">
+                    <span class="badge badge-info">${escapeHtml(f.type)}</span>
+                    <span class="badge badge-${f.severity === 'critical' ? 'danger' : f.severity === 'high' ? 'warning' : 'info'}">${escapeHtml(f.severity)}</span>
+                    <p style="font-size:12px;margin:5px 0;color:#8a93a8;">${escapeHtml(f.details || f.recommendation)}</p>
+                </div>
+            `).join('')}
+        </div>
+    `).join('');
+
+    const recsHtml = (r.recommendations || []).map(rec =>
+        `<li style="padding:4px 0;">${escapeHtml(rec)}</li>`
+    ).join('');
+
+    content.innerHTML = `
+        <h4>${r.icon || '🎯'} ${escapeHtml(r.hostname)} <small style="color:#8a93a8;">(${escapeHtml(r.ip_address)})</small></h4>
+        <p>
+            <span class="badge badge-info">重要性: ${escapeHtml(r.criticality)}</span>
+            <span class="badge badge-info">耗时: ${r.scan_duration}s</span>
+            <span class="badge badge-info">后端: ${escapeHtml(r.scan_backend)}</span>
+            <span class="badge badge-${r.risk_score >= 30 ? 'danger' : r.risk_score >= 10 ? 'warning' : 'success'}">
+                风险分: ${r.risk_score}/100
+            </span>
+        </p>
+
+        <h4 style="color:#00d4ff;margin-top:15px;">🔌 开放端口 (${(r.ports_open || []).length})</h4>
+        ${portsHtml ? `<table><thead><tr><th>端口</th><th>服务</th><th>状态</th><th>延迟</th><th>Banner</th></tr></thead><tbody>${portsHtml}</tbody></table>` : '<p style="color:#8a93a8;">未发现开放端口</p>'}
+
+        ${servicesHtml ? `<h4 style="color:#00d4ff;margin-top:15px;">🌐 HTTP 服务 (${(r.services || []).length})</h4>${servicesHtml}` : ''}
+        ${webHtml ? `<h4 style="color:#00d4ff;margin-top:15px;">🛡️ Web 漏洞扫描 (${(r.web_findings || []).length})</h4>${webHtml}` : ''}
+
+        <h4 style="color:#00d4ff;margin-top:15px;">💡 修复建议</h4>
+        <ul style="margin-left:20px;color:#e0e6ed;">${recsHtml}</ul>
+    `;
+    panel.style.display = 'block';
+    panel.scrollIntoView({behavior: 'smooth'});
+}
+
+function closeResult() {
+    document.getElementById('result-panel').style.display = 'none';
+}
+
+loadStats();
+loadWhitelist();
+loadTasks();
+</script>
+{% endblock %}

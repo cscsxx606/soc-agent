@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block title %}告警事件{% endblock %}
+{% block page_title %}告警事件{% endblock %}
+
+{% block content %}
+<!-- 筛选操作栏 -->
+<div class="panel" style="padding:16px 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <select id="filter-priority" style="width:160px;" onchange="loadIncidents()">
+                <option value="">所有优先级</option>
+                <option value="P1">🔴 P1 - 立即处置</option>
+                <option value="P2">🟠 P2 - 调查跟进</option>
+                <option value="P3">🟡 P3 - 观察记录</option>
+                <option value="P4">🟢 P4 - 自动关闭</option>
+            </select>
+            <select id="filter-status" style="width:140px;" onchange="loadIncidents()">
+                <option value="">所有状态</option>
+                <option value="open">🟡 待处理</option>
+                <option value="in_progress">🔵 处理中</option>
+                <option value="resolved">🟢 已解决</option>
+                <option value="closed">⚪ 已关闭</option>
+            </select>
+            <input type="text" id="filter-search" placeholder="🔍 搜索事件ID/资产/IP..." style="width:220px;" onkeyup="if(event.key==='Enter')loadIncidents()">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span style="color:var(--text-muted);font-size:12px;" id="last-refresh">更新于刚刚</span>
+            <button onclick="loadIncidents()" class="small">🔄 刷新</button>
+            <button class="success small" onclick="exportIncidents()">📥 导出</button>
+        </div>
+    </div>
+</div>
+
+<!-- 统计卡片 -->
+<div class="stat-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px;">
+    <div class="stat-card danger">
+        <div class="label">P1 紧急</div>
+        <div class="value" id="stat-p1">-</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="label">P2 高危</div>
+        <div class="value" id="stat-p2">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">P3 中危</div>
+        <div class="value" id="stat-p3">-</div>
+    </div>
+    <div class="stat-card success">
+        <div class="label">P4 低危</div>
+        <div class="value" id="stat-p4">-</div>
+    </div>
+    <div class="stat-card" style="--accent:var(--purple);">
+        <div class="label">总计</div>
+        <div class="value" id="stat-total">-</div>
+    </div>
+</div>
+
+<div class="panel">
+    <h3>📋 事件列表 <span style="font-weight:normal;color:var(--text-muted);font-size:13px;">(共 <span id="total-count">0</span> 条)</span></h3>
+    <div style="overflow-x:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:40px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll()"></th>
+                    <th>事件 ID</th>
+                    <th>时间</th>
+                    <th>攻击类型</th>
+                    <th>源 IP</th>
+                    <th>目标资产</th>
+                    <th>评分</th>
+                    <th>优先级</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="incidents-tbody">
+                <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <!-- 分页 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <span style="color:var(--text-muted);font-size:12px;" id="page-info">第 1 页，共 0 页</span>
+        <div style="display:flex;gap:6px;" id="pagination"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 1;
+let pageSize = 20;
+let allIncidents = [];
+
+async function loadIncidents() {
+    showLoading('#incidents-tbody', 10);
+    const priority = document.getElementById('filter-priority').value;
+    const status = document.getElementById('filter-status').value;
+    const search = document.getElementById('filter-search').value;
+    
+    try {
+        const res = await api(`/api/admin/incidents/list?priority=${priority}&status=${status}&search=${encodeURIComponent(search)}`);
+        if (!res || !res.success) {
+            showError('#incidents-tbody', 10, (res && res.error) || '加载失败');
+            updateStats({});
+            return;
+        }
+        
+        allIncidents = res.incidents || [];
+        updateStats(res.stats || getAllStats(allIncidents));
+        renderPage(1);
+        
+        document.getElementById('last-refresh').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+    } catch (e) {
+        showError('#incidents-tbody', 10, '异常: ' + e.message);
+        console.error('loadIncidents', e);
+    }
+}
+
+function updateStats(stats) {
+    ['P1','P2','P3','P4'].forEach(p => {
+        const el = document.getElementById('stat-' + p.toLowerCase());
+        if (el) el.textContent = stats[p] || 0;
+    });
+    document.getElementById('stat-total').textContent = stats.total || allIncidents.length;
+}
+
+function getAllStats(arr) {
+    const s = {P1:0,P2:0,P3:0,P4:0,total:arr.length};
+    arr.forEach(i => { const p = i.priority; if(p in s) s[p]++; });
+    return s;
+}
+
+function renderPage(page) {
+    currentPage = page;
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const pageData = allIncidents.slice(start, end);
+    const totalPages = Math.ceil(allIncidents.length / pageSize) || 1;
+    
+    document.getElementById('total-count').textContent = allIncidents.length;
+    document.getElementById('page-info').textContent = `第 ${page} 页，共 ${totalPages} 页 (${allIncidents.length} 条)`;
+    renderPagination(totalPages);
+    
+    const tbody = document.getElementById('incidents-tbody');
+    if (!pageData.length) {
+        showEmpty('#incidents-tbody', 10, '暂无告警事件 - 请先运行主控制台生成告警报告');
+        return;
+    }
+    
+    const pClass = {P1:'danger',P2:'warning',P3:'info',P4:'success'};
+    const sClass = {open:'warning',in_progress:'info',resolved:'success',closed:'success'};
+    const sLabel = {open:'待处理',in_progress:'处理中',resolved:'已解决',closed:'已关闭'};
+    
+    tbody.innerHTML = pageData.map((i, idx) => `
+        <tr style="animation:fadeIn 0.3s ${idx*0.05}s both;">
+            <td><input type="checkbox" class="row-select" value="${i.alert_id}"></td>
+            <td><strong>${escapeHtml(i.alert_id)}</strong></td>
+            <td>${escapeHtml((i.timestamp||'').slice(0,19).replace('T',' '))}</td>
+            <td>${escapeHtml(i.alert_type)}</td>
+            <td><code>${escapeHtml(i.source_ip||'-')}</code></td>
+            <td>${escapeHtml(i.hostname||'-')}</td>
+            <td><strong style="color:${i.risk_score >= 80 ? 'var(--danger)' : i.risk_score >= 60 ? 'var(--warning)' : 'var(--text)'}">${i.risk_score}</strong></td>
+            <td><span class="badge badge-${pClass[i.priority]||'info'}">${i.priority}</span></td>
+            <td><span class="badge badge-${sClass[i.status]||'info'}">${sLabel[i.status]||i.status||'-'}</span></td>
+            <td>
+                <button class="small" onclick="viewIncident('${i.alert_id}')">👁️</button>
+                <button class="small secondary" onclick="respondIncident('${i.alert_id}')">⚡</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderPagination(totalPages) {
+    const div = document.getElementById('pagination');
+    let html = `<button class="small" ${currentPage===1?'disabled':''} onclick="renderPage(${currentPage-1})">←</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+            html += `<button class="small ${i===currentPage?'':'secondary'}" onclick="renderPage(${i})">${i}</button>`;
+        } else if (i === currentPage - 2 || i === currentPage + 2) {
+            html += `<span style="color:var(--text-muted);">...</span>`;
+        }
+    }
+    html += `<button class="small" ${currentPage===totalPages?'disabled':''} onclick="renderPage(${currentPage+1})">→</button>`;
+    div.innerHTML = html;
+}
+
+function toggleSelectAll() {
+    const checked = document.getElementById('select-all').checked;
+    document.querySelectorAll('.row-select').forEach(cb => cb.checked = checked);
+}
+
+function viewIncident(id) {
+    // 显示事件详情弹窗
+    (async function() {
+        const res = await api('/api/admin/incidents/' + id);
+        if (!res || !res.success) {
+            toast('加载事件详情失败', 'error');
+            return;
+        }
+        const alert = res.alert || {};
+        const ai = alert.ai_analysis || {};
+        const report = res.report || {};
+        
+        showModal(`<h3>🔍 事件详情: ${id}</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div style="background:var(--bg-input);padding:12px;border-radius:6px;">
+                    <strong style="color:var(--accent);">基本信息</strong>
+                    <div style="margin-top:8px;font-size:13px;">
+                        <div><span style="color:var(--text-muted);">时间:</span> ${escapeHtml((alert.timestamp||'').slice(0,19).replace('T',' '))}</div>
+                        <div><span style="color:var(--text-muted);">源IP:</span> <code>${escapeHtml(alert.source_ip||'-')}</code></div>
+                        <div><span style="color:var(--text-muted);">目标IP:</span> <code>${escapeHtml(alert.dest_ip||'-')}</code></div>
+                        <div><span style="color:var(--text-muted);">主机:</span> ${escapeHtml((alert.asset_info||{}).hostname||'-')}</div>
+                    </div>
+                </div>
+                <div style="background:var(--bg-input);padding:12px;border-radius:6px;">
+                    <strong style="color:var(--accent);">AI 分析结果</strong>
+                    <div style="margin-top:8px;font-size:13px;">
+                        <div><span style="color:var(--text-muted);">攻击类型:</span> ${escapeHtml(ai.attack_type||'-')}</div>
+                        <div><span style="color:var(--text-muted);">风险评分:</span> <strong style="color:${(ai.risk_score||0)>=80?'var(--danger)':'var(--warning)'};">${escapeHtml(ai.risk_score||0)}</strong></div>
+                        <div><span style="color:var(--text-muted);">MITRE:</span> ${escapeHtml(ai.mitre_technique_id||'-')} ${escapeHtml(ai.mitre_technique_name||'')}</div>
+                        <div><span style="color:var(--text-muted);">优先级:</span> <span class="badge ${(ai.priority||'')==='P1'||(ai.risk_score||0)>=80?'badge-danger':'badge-warning'}">${ai.priority||((ai.risk_score||0)>=80?'P1':(ai.risk_score||0)>=60?'P2':(ai.risk_score||0)>=40?'P3':'P4')}</span></div>
+                    </div>
+                </div>
+                <div style="grid-column:1/-1;background:var(--bg-input);padding:12px;border-radius:6px;">
+                    <strong style="color:var(--accent);">AI 推理</strong>
+                    <p style="margin-top:8px;font-size:13px;color:var(--text);line-height:1.6;">${escapeHtml(ai.reasoning||'无详细推理')}</p>
+                </div>
+                <div style="grid-column:1/-1;background:var(--bg-input);padding:12px;border-radius:6px;">
+                    <strong style="color:var(--accent);">处置建议</strong>
+                    <p style="margin-top:8px;font-size:13px;">${escapeHtml(ai.recommended_action||'暂无建议')}${ai.playbook_suggestion ? '<br><span style="color:var(--text-muted);">参考预案: '+escapeHtml(ai.playbook_suggestion)+'</span>' : ''}</p>
+                </div>
+            </div>
+            <div style="text-align:center;margin-top:12px;">
+                <button onclick="doRespondIncident('${id}')">⚡ 生成处置方案</button>
+                <button class="secondary" onclick="closeModal()">关闭</button>
+            </div>
+        `);
+    })();
+}
+
+async function doRespondIncident(id) {
+    const res = await api('/api/admin/incidents/' + id + '/respond', {method: 'POST'});
+    if (res && res.success) {
+        const plan = res.response_plan || {};
+        showModal(`<h3>⚡ 处置方案: ${id}</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px;">
+                <div style="background:var(--bg-input);padding:12px;border-radius:6px;">
+                    <strong style="color:var(--danger);">🛑 立即遏制</strong>
+                    ${(plan.containment_immediate||[]).map(a => '<div style="font-size:12px;margin-top:6px;">• '+escapeHtml(a)+'</div>').join('')}
+                </div>
+                <div style="background:var(--bg-input);padding:12px;border-radius:6px;">
+                    <strong style="color:var(--warning);">🧹 根除</strong>
+                    ${(plan.eradication||[]).map(a => '<div style="font-size:12px;margin-top:6px;">• '+escapeHtml(a)+'</div>').join('')}
+                </div>
+                <div style="background:var(--bg-input);padding:12px;border-radius:6px;">
+                    <strong style="color:var(--success);">↩️ 恢复</strong>
+                    ${(plan.recovery||[]).map(a => '<div style="font-size:12px;margin-top:6px;">• '+escapeHtml(a)+'</div>').join('')}
+                </div>
+            </div>
+            <div style="margin-top:12px;background:rgba(0,212,255,0.05);padding:12px;border-radius:6px;">
+                <strong style="color:var(--accent);">📋 执行动作 (${(plan.playbook_actions||[]).length}个)</strong>
+                ${(plan.playbook_actions||[]).map(a => '<div style="font-size:12px;margin-top:4px;">'+(a.auto?'✅ 自动':'⏳ 待审批')+' '+escapeHtml(a.action)+' → '+escapeHtml(a.target)+'</div>').join('')}
+            </div>
+            <div style="text-align:center;margin-top:12px;">
+                <button class="secondary" onclick="closeModal()">关闭</button>
+            </div>
+        `);
+        toast('✓ 处置方案已生成');
+        loadIncidents();
+    } else {
+        toast('生成失败: ' + ((res && res.error) || ''), 'error');
+    }
+}
+
+function respondIncident(id) {
+    doRespondIncident(id);
+}
+
+function exportIncidents() {
+    const selected = Array.from(document.querySelectorAll('.row-select:checked')).map(cb => cb.value);
+    if (selected.length === 0) {
+        // 没有选择就导出全部
+        toast('正在导出全部事件...', 'success');
+        api('/api/admin/incidents/export', {method: 'POST'}).then(res => {
+            if (res && res.success) {
+                // 下载 CSV
+                const blob = new Blob([res.csv], {type: 'text/csv;charset=utf-8'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'incidents_' + new Date().toISOString().slice(0,10) + '.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                toast('✓ 已导出 ' + res.count + ' 条事件');
+            } else {
+                toast('导出失败', 'error');
+            }
+        });
+        return;
+    }
+    toast('导出 ' + selected.length + ' 条事件...', 'success');
+    api('/api/admin/incidents/export', {method: 'POST'}).then(res => {
+        if (res && res.success) {
+            const blob = new Blob([res.csv], {type: 'text/csv;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'incidents_' + new Date().toISOString().slice(0,10) + '.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+            toast('✓ 已导出');
+        }
+    });
+}
+
+// CSS 动画
+const style = document.createElement('style');
+style.textContent = `
+@keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+`;
+document.head.appendChild(style);
+
+loadIncidents();
+</script>
+{% endblock %}

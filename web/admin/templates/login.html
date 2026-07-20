@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>登录 - SOC 管理后台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: var(--font, -apple-system, 'PingFang SC', 'Segoe UI', sans-serif); min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0a0e1a 0%, #131825 100%); position: relative; overflow: hidden; color: #e0e6ed; }
+        body::before { content: ''; position: absolute; width: 600px; height: 600px; background: radial-gradient(circle, rgba(0,212,255,0.06) 0%, transparent 70%); top: -200px; right: -200px; }
+        body::after { content: ''; position: absolute; width: 400px; height: 400px; background: radial-gradient(circle, rgba(167,139,250,0.04) 0%, transparent 70%); bottom: -150px; left: -150px; }
+        .login-box { position: relative; z-index: 1; background: #131825; border: 1px solid #2a3147; border-radius: 10px; padding: 40px; width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .login-box h1 { font-size: 22px; text-align: center; margin-bottom: 5px; background: linear-gradient(135deg, #00d4ff, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .login-box .subtitle { text-align: center; color: #8a93a8; font-size: 13px; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 6px; color: #8a93a8; font-size: 12px; font-weight: 500; }
+        .form-group input { width: 100%; padding: 12px 16px; background: #0a0e1a; border: 1px solid #2a3147; color: #e0e6ed; border-radius: 6px; font-size: 14px; transition: all 0.2s; }
+        .form-group input:focus { outline: none; border-color: #00d4ff; box-shadow: 0 0 0 3px rgba(0,212,255,0.1); }
+        .form-group input:hover { border-color: #4a5568; }
+        .login-btn { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e1a; border: none; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 5px; }
+        .login-btn:hover { background: #00b8e6; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,212,255,0.25); }
+        .login-btn:active { transform: translateY(0); }
+        .error { color: #ff4757; font-size: 13px; margin-top: 12px; text-align: center; display: none; }
+        .hint { margin-top: 24px; padding: 16px; background: rgba(0,0,0,0.3); border-radius: 6px; font-size: 12px; color: #8a93a8; line-height: 1.8; border: 1px solid #2a3147; }
+        .hint strong { color: #00d4ff; }
+        .hint code { background: #0a0e1a; padding: 2px 6px; border-radius: 3px; color: #ffa502; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>🔒 SOC 管理后台</h1>
+        <p class="subtitle">Multi-Agent Security Operations</p>
+        <form id="loginForm">
+            <div class="form-group">
+                <label>用户名</label>
+                <input id="username" required autofocus>
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input id="password" type="password" required>
+            </div>
+            <button type="submit" class="login-btn">登 录</button>
+            <div class="error" id="error"></div>
+        </form>
+        <div class="hint">
+            <strong>默认账号</strong><br>
+            管理员: <code>admin</code> / <code>admin123</code><br>
+            分析师: <code>analyst</code> / <code>analyst123</code>
+        </div>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = this.querySelector('.login-btn');
+            const err = document.getElementById('error');
+            btn.disabled = true; btn.textContent = '登录中...'; err.style.display = 'none';
+
+            try {
+                const r = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    window.location.href = '/dashboard';
+                } else {
+                    err.textContent = d.error || '用户名或密码错误';
+                    err.style.display = 'block';
+                    btn.disabled = false; btn.textContent = '登 录';
+                }
+            } catch (e) {
+                err.textContent = '网络错误，请重试';
+                err.style.display = 'block';
+                btn.disabled = false; btn.textContent = '登 录';
+            }
+        });
+    </script>
+</body>
+</html>

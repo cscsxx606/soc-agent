@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}品牌与通知设置{% endblock %}
+{% block page_title %}🎨 品牌与通知设置{% endblock %}
+
+{% block content %}
+
+<!-- Tab 导航 -->
+<div class="tab-header" style="margin-bottom:20px;">
+    <button class="tab-btn active" onclick="switchTab('branding')">🎨 品牌配置</button>
+    <button class="tab-btn" onclick="switchTab('notification')">🔔 通知通道</button>
+    <button class="tab-btn" onclick="switchTab('templates')">📝 通知模板</button>
+    <button class="tab-btn" onclick="switchTab('tenants')">🏢 租户管理</button>
+</div>
+
+<!-- 品牌 -->
+<div id="tab-branding" class="tab-content">
+    <div class="panel">
+        <h3>🎨 品牌配置</h3>
+        <p style="color:#8a93a8;font-size:13px;margin-bottom:15px;">自定义站点名称、Logo、主题色，以符合你的品牌形象。</p>
+        <div class="form-row"><label>站点名称</label><input id="b-site-name" placeholder="SOC 控制台"></div>
+        <div class="form-row"><label>Logo URL（可选）</label><input id="b-logo" placeholder="https://your-company.com/logo.png"></div>
+        <div class="form-row"><label>Favicon URL（可选）</label><input id="b-favicon" placeholder="https://your-company.com/favicon.ico"></div>
+        <div class="form-row"><label>主题色</label><div style="display:flex;gap:10px;align-items:center;"><input id="b-color" type="color" value="#6366f1" style="width:50px;height:40px;"><span id="b-color-preview">#6366f1</span></div></div>
+        <div class="form-row"><label>底部文字</label><input id="b-footer" placeholder="Powered by SOC Agent"></div>
+        <button onclick="saveBranding()">💾 保存品牌配置</button>
+    </div>
+    <div class="panel" style="margin-top:15px;">
+        <h3>👁️ 预览</h3>
+        <div id="branding-preview" style="background:#0a0e1a;padding:20px;border-radius:8px;text-align:center;">
+            <div style="font-size:24px;font-weight:700;" id="preview-title">SOC 控制台</div>
+            <div style="color:#64748b;font-size:12px;margin-top:5px;" id="preview-footer">Powered by SOC Agent v2.0</div>
+        </div>
+    </div>
+</div>
+
+<!-- 通知通道 -->
+<div id="tab-notification" class="tab-content" style="display:none;">
+    <div class="panel">
+        <h3>🔔 通知通道管理</h3>
+        <p style="color:#8a93a8;font-size:13px;margin-bottom:15px;">添加飞书/企微/钉钉/邮件/Slack 通知机器人，当高风险告警或扫描完成时自动发送通知。</p>
+        <table><thead><tr><th>名称</th><th>类型</th><th>状态</th><th>测试</th><th>操作</th></tr></thead>
+        <tbody id="channels-tbody"><tr><td colspan="5" style="text-align:center;color:#8a93a8;">加载中...</td></tr></tbody></table>
+        <h4 style="margin-top:15px;">➕ 添加通道</h4>
+        <div class="form-row"><label>名称</label><input id="ch-name" placeholder="如：安全团队飞书"></div>
+        <div class="form-row"><label>类型</label><select id="ch-type">
+            <option value="feishu">飞书机器人</option>
+            <option value="wechat_work">企业微信</option>
+            <option value="dingtalk">钉钉</option>
+            <option value="slack">Slack</option>
+            <option value="email">邮件 SMTP</option>
+            <option value="webhook">通用 Webhook</option>
+        </select></div>
+        <div id="ch-config-area">
+            <div class="form-row"><label>Webhook URL / 配置</label><textarea id="ch-config" rows="3" placeholder='{"webhook_url":"https://open.feishu.cn/open-apis/bot/v2/hook/xxx"}'></textarea></div>
+        </div>
+        <button onclick="addChannel()">➕ 添加</button>
+    </div>
+</div>
+
+<!-- 通知模板 -->
+<div id="tab-templates" class="tab-content" style="display:none;">
+    <div class="panel">
+        <h3>📝 通知模板</h3>
+        <p style="color:#8a93a8;font-size:13px;margin-bottom:15px;">配置不同事件类型的通知内容模板。变量使用 <code>\{\{ variable.name }}</code> 语法。</p>
+        <table><thead><tr><th>名称</th><th>事件类型</th><th>模板预览</th><th>操作</th></tr></thead>
+        <tbody id="templates-tbody"><tr><td colspan="4" style="text-align:center;color:#8a93a8;">加载中...</td></tr></tbody></table>
+    </div>
+</div>
+
+<!-- 租户管理 -->
+<div id="tab-tenants" class="tab-content" style="display:none;">
+    <div class="panel">
+        <h3>🏢 租户管理</h3>
+        <p style="color:#8a93a8;font-size:13px;margin-bottom:15px;">多租户管理。每个租户数据完全隔离，适合 MSSP 运营场景。</p>
+        <table><thead><tr><th>Key</th><th>名称</th><th>套餐</th><th>用户上限</th><th>资产上限</th><th>状态</th></tr></thead>
+        <tbody id="tenants-tbody"><tr><td colspan="6" style="text-align:center;color:#8a93a8;">加载中...</td></tr></tbody></table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Tab 切换
+function switchTab(tab) {
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + tab).style.display = 'block';
+    event.target.classList.add('active');
+}
+
+// 颜色选择器实时预览
+document.addEventListener('DOMContentLoaded', function() {
+    const colorInput = document.getElementById('b-color');
+    if (colorInput) {
+        colorInput.addEventListener('input', function() {
+            document.getElementById('b-color-preview').textContent = this.value;
+        });
+    }
+});
+
+// ===== 品牌 =====
+async function loadBranding() {
+    const res = await api('/api/admin/branding/get');
+    if (!res || !res.success) return;
+    const b = res.branding;
+    document.getElementById('b-site-name').value = b.site_name || '';
+    document.getElementById('b-logo').value = b.logo_url || '';
+    document.getElementById('b-favicon').value = b.favicon_url || '';
+    document.getElementById('b-color').value = b.primary_color || '#6366f1';
+    document.getElementById('b-color-preview').textContent = b.primary_color || '#6366f1';
+    document.getElementById('b-footer').value = b.footer_text || '';
+    updatePreview();
+}
+
+function updatePreview() {
+    document.getElementById('preview-title').textContent = document.getElementById('b-site-name').value || 'SOC 控制台';
+    document.getElementById('preview-footer').textContent = document.getElementById('b-footer').value || '';
+    const color = document.getElementById('b-color').value;
+    document.getElementById('branding-preview').style.borderTop = '3px solid ' + color;
+}
+
+['b-site-name', 'b-footer', 'b-color'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updatePreview);
+});
+
+async function saveBranding() {
+    const data = {
+        site_name: document.getElementById('b-site-name').value,
+        logo_url: document.getElementById('b-logo').value,
+        favicon_url: document.getElementById('b-favicon').value,
+        primary_color: document.getElementById('b-color').value,
+        footer_text: document.getElementById('b-footer').value
+    };
+    const res = await api('/api/admin/branding/update', {method:'POST', body:JSON.stringify(data)});
+    if (res && res.success) { toast('✓ 品牌配置已保存'); } else { toast('保存失败', 'error'); }
+}
+
+// ===== 通知通道 =====
+async function loadChannels() {
+    showLoading('#channels-tbody', 5);
+    const res = await api('/api/admin/notifications/channels');
+    if (!res || !res.success || !res.channels || !res.channels.length) {
+        showEmpty('#channels-tbody', 5, '暂无通知通道 — 添加一个开始');
+        return;
+    }
+    document.getElementById('channels-tbody').innerHTML = res.channels.map(c => {
+        const config = typeof c.config_json === 'string' ? JSON.parse(c.config_json || '{}') : (c.config_json || {});
+        const url = config.webhook_url || config.smtp_host || config.url || '...';
+        return `<tr>
+            <td><strong>${escapeHtml(c.name)}</strong></td>
+            <td><span class="badge badge-info">${escapeHtml(c.channel)}</span></td>
+            <td><span class="badge ${c.enabled ? 'badge-success' : 'badge-warning'}">${c.enabled ? '启用' : '禁用'}</span></td>
+            <td><button class="small" onclick="testChannel(${c.id})">测试</button></td>
+            <td>
+                <button class="small danger" onclick="deleteChannel(${c.id})">删除</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function addChannel() {
+    const name = document.getElementById('ch-name').value.trim();
+    const type = document.getElementById('ch-type').value;
+    let config;
+    try { config = JSON.parse(document.getElementById('ch-config').value || '{}'); } catch(e) { toast('配置 JSON 格式错误', 'error'); return; }
+    if (!name) { toast('请输入名称', 'error'); return; }
+    const res = await api('/api/admin/notifications/channel/create', {
+        method:'POST', body:JSON.stringify({name, channel:type, config, enabled:1})
+    });
+    if (res && res.success) { toast('✓ 通道已添加'); loadChannels(); } else { toast('添加失败', 'error'); }
+}
+
+async function testChannel(id) {
+    const res = await api(`/api/admin/notifications/channel/test/${id}`, {method:'POST'});
+    if (res && res.success) { toast('✓ 测试消息已发送'); } else { toast('测试失败: ' + ((res && res.result && res.result.error) || ''), 'error'); }
+}
+
+async function deleteChannel(id) {
+    if (!confirm('确认删除？')) return;
+    const res = await api(`/api/admin/notifications/channel/delete/${id}`, {method:'POST'});
+    if (res && res.success) { toast('已删除'); loadChannels(); }
+}
+
+// ===== 通知模板 =====
+async function loadTemplates() {
+    showLoading('#templates-tbody', 4);
+    const res = await api('/api/admin/notifications/templates');
+    if (!res || !res.success || !res.templates || !res.templates.length) {
+        showEmpty('#templates-tbody', 4, '暂无模板');
+        return;
+    }
+    document.getElementById('templates-tbody').innerHTML = res.templates.map(t => {
+        const titlePreview = t.title_template.substring(0, 60);
+        return `<tr>
+            <td><strong>${escapeHtml(t.name)}</strong></td>
+            <td><span class="badge badge-info">${escapeHtml(t.event_type)}</span></td>
+            <td><code style="font-size:11px;">${escapeHtml(titlePreview)}...</code></td>
+            <td><button class="small danger" onclick="deleteTemplate(${t.id})">删除</button></td>
+        </tr>`;
+    }).join('');
+}
+
+async function deleteTemplate(id) {
+    if (!confirm('确认删除模板？')) return;
+    const res = await api(`/api/admin/notifications/template/delete/${id}`, {method:'POST'});
+    if (res && res.success) { toast('已删除'); loadTemplates(); }
+}
+
+// ===== 租户 =====
+async function loadTenants() {
+    showLoading('#tenants-tbody', 6);
+    const res = await api('/api/admin/tenants/list');
+    if (!res || !res.success || !res.tenants || !res.tenants.length) {
+        showEmpty('#tenants-tbody', 6, '暂无租户');
+        return;
+    }
+    document.getElementById('tenants-tbody').innerHTML = res.tenants.map(t => `<tr>
+        <td><code>${escapeHtml(t.tenant_key)}</code></td>
+        <td><strong>${escapeHtml(t.name)}</strong></td>
+        <td><span class="badge badge-info">${escapeHtml(t.plan)}</span></td>
+        <td>${t.max_users}</td>
+        <td>${t.max_assets}</td>
+        <td><span class="badge ${t.is_active ? 'badge-success' : 'badge-danger'}">${t.is_active ? '活跃' : '停用'}</span></td>
+    </tr>`).join('');
+}
+
+function updatePreview() {
+    const name = document.getElementById('b-site-name').value || 'SOC 控制台';
+    const footer = document.getElementById('b-footer').value || '';
+    const color = document.getElementById('b-color').value || '#6366f1';
+    document.getElementById('preview-title').textContent = name;
+    document.getElementById('preview-title').style.color = color;
+    document.getElementById('preview-footer').textContent = footer;
+    document.getElementById('branding-preview').style.borderTop = '3px solid ' + color;
+}
+
+loadBranding();
+loadChannels();
+loadTemplates();
+loadTenants();
+</script>
+{% endblock %}

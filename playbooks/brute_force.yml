@@ -1,0 +1,44 @@
+---
+id: soc-playbook-bruteforce
+name: SSH 暴力破解响应 Playbook
+phase: response
+trigger:
+  alert_type: brute_force_ssh
+  severity: ["high", "critical"]
+---
+
+# SSH 暴力破解响应预案
+
+## 自动执行（无需审批）
+
+1. **阻断攻击源 IP**
+   - 在防火墙/WAF 黑名单添加该 IP
+   - 保留 24 小时，自动过期
+
+2. **收集证据**
+   - 保存 SSH auth.log 中相关条目
+   - 记录时间戳和攻击次数
+
+## 人工审批后执行
+
+3. **隔离主机**（如发现成功登录）
+   - 调用 EDR 隔离目标服务器
+   - 断网后保留取证能力
+
+## 通知
+
+- 安全团队群组
+- 服务器负责人 (`asset_info.owner`)
+
+## 回滚
+
+- 移除防火墙规则
+- 解封 IP（24h 后自动）
+
+## 检查项
+
+- [ ] 是否有成功登录记录
+- [ ] 是否触发了其他告警
+- [ ] 主机是否需要加固（fail2ban / 密钥登录）
+
+---

@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}扫描调度器{% endblock %}
+{% block page_title %}⏰ 扫描调度器{% endblock %}
+
+{% block content %}
+<!-- 状态栏 -->
+<div id="status-bar" class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+    <div class="stat-card">
+        <div class="label">调度器状态</div>
+        <div class="value" id="sched-status">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">后台线程</div>
+        <div class="value" id="thread-status">-</div>
+    </div>
+    <div class="stat-card success">
+        <div class="label">调度总数</div>
+        <div class="value" id="sched-count">-</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="label">今日执行</div>
+        <div class="value" id="today-runs">-</div>
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+    <!-- 左侧：创建调度 -->
+    <div>
+        <div class="panel">
+            <h3>➕ 创建调度</h3>
+            <div class="form-row">
+                <label>任务名称 *</label>
+                <input id="sched-name" placeholder="如：关键资产周扫">
+            </div>
+
+            <div class="form-row">
+                <label>Cron 表达式 *</label>
+                <div style="display:flex;gap:8px;">
+                    <input id="sched-cron" placeholder="0 2 * * 1" style="flex:1;">
+                    <button onclick="parseCron()" class="secondary">🔍 解析</button>
+                </div>
+                <div id="cron-preview" style="margin-top:8px;font-size:12px;color:var(--accent);min-height:20px;"></div>
+            </div>
+
+            <div class="form-row">
+                <label>常用预设</label>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                    <button class="small secondary" onclick="usePreset('0 2 * * *')">🌙 每天凌晨2点</button>
+                    <button class="small secondary" onclick="usePreset('0 8 * * 1')">📅 每周一8点</button>
+                    <button class="small secondary" onclick="usePreset('0 2 * * 0')">🌅 每周日凌晨</button>
+                    <button class="small secondary" onclick="usePreset('0 */6 * * *')">⏰ 每6小时</button>
+                    <button class="small secondary" onclick="usePreset('*/30 * * * *')">⚡ 每30分钟</button>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label>目标 IP（每行一个）</label>
+                <textarea id="sched-targets" rows="4" placeholder="10.0.0.10&#10;10.0.0.11&#10;scanme.nmap.org" style="width:100%;"></textarea>
+            </div>
+
+            <div class="form-row">
+                <label>
+                    <input type="checkbox" id="sched-web" checked> 启用 Web 漏洞扫描
+                </label>
+            </div>
+
+            <div class="form-row">
+                <label>风险告警阈值（风险分≥此值触发告警）</label>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="sched-threshold" type="range" min="0" max="100" value="30" style="flex:1;" oninput="document.getElementById('threshold-val').textContent=this.value">
+                    <span id="threshold-val" style="font-weight:700;color:var(--accent);min-width:30px;">30</span>
+                </div>
+            </div>
+
+            <div style="text-align:center;margin-top:20px;">
+                <button onclick="createSchedule()" id="create-sched-btn">🚀 创建调度</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：调度列表 -->
+    <div>
+        <div class="panel">
+            <h3>📅 调度列表</h3>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>名称</th>
+                            <th>Cron</th>
+                            <th>目标</th>
+                            <th>下次执行</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="schedules-tbody">
+                        <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div style="text-align:center;margin-top:12px;">
+                <button onclick="loadSchedules()" class="small">🔄 刷新</button>
+            </div>
+        </div>
+
+        <div class="panel" style="margin-top:15px;">
+            <h3>📜 执行历史</h3>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr><th>时间</th><th>调度</th><th>目标</th><th>最高风险</th><th>状态</th></tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">暂无历史</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 风险告警区 -->
+<div class="panel" style="margin-top:20px;">
+    <h3>🔔 风险告警（最近 5 条）</h3>
+    <div id="alerts-area">
+        <p style="color:var(--text-muted);">告警会出现在历史表中以 "risk_alert" 标识。本演示版本告警会输出到日志。</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadStatus() {
+    try {
+        const res = await api('/api/admin/scheduler/status');
+        if (!res || !res.success) return;
+        
+        const statusEl = document.getElementById('sched-status');
+        statusEl.textContent = res.running ? '● 运行中' : '○ 已停止';
+        statusEl.style.color = res.running ? 'var(--success)' : 'var(--text-muted)';
+        
+        const threadEl = document.getElementById('thread-status');
+        threadEl.textContent = res.thread_alive ? '✓ 存活' : '✗ 未运行';
+        threadEl.style.color = res.thread_alive ? 'var(--success)' : 'var(--danger)';
+        
+        document.getElementById('sched-count').textContent = res.total_schedules || 0;
+        document.getElementById('today-runs').textContent = res.today_runs || 0;
+    } catch (e) {
+        console.error('loadStatus', e);
+    }
+}
+
+async function loadSchedules() {
+    showLoading('#schedules-tbody', 6);
+    try {
+        const res = await api('/api/admin/scheduler/list');
+        if (!res || !res.success || !res.schedules || res.schedules.length === 0) {
+            showEmpty('#schedules-tbody', 6, '暂无调度 - 左侧创建第一个');
+            return;
+        }
+        
+        document.getElementById('schedules-tbody').innerHTML = res.schedules.map((s, idx) => {
+            const targets = (s.target_ips || []).slice(0, 2).join(', ') +
+                           ((s.target_ips || []).length > 2 ? ` 等${s.target_ips.length}个` : '');
+            const nextRun = s.next_run ? new Date(s.next_run).toLocaleString('zh-CN') : '-';
+            return `
+                <tr style="animation:fadeIn 0.3s ${idx*0.05}s both;">
+                    <td>
+                        <strong>${escapeHtml(s.name)}</strong>
+                        <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(s.description || '')}</div>
+                    </td>
+                    <td><code style="font-size:12px;">${escapeHtml(s.cron_expr)}</code></td>
+                    <td><span style="font-size:12px;color:var(--text-muted);">${escapeHtml(targets || '无目标')}</span></td>
+                    <td><span style="font-size:12px;font-family:monospace;">${nextRun}</span></td>
+                    <td><span class="badge ${s.enabled ? 'badge-success' : 'badge-warning'}">${s.enabled ? '● 启用' : '○ 禁用'}</span></td>
+                    <td>
+                        <div style="display:flex;gap:4px;">
+                            <button class="small" onclick="toggleSchedule('${s.schedule_id}', ${!s.enabled})" title="${s.enabled ? '禁用' : '启用'}">${s.enabled ? '⏸️' : '▶️'}</button>
+                            <button class="small danger" onclick="deleteSchedule('${s.schedule_id}')" title="删除">🗑️</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        showError('#schedules-tbody', 6, '异常: ' + e.message);
+    }
+}
+
+async function loadHistory() {
+    showLoading('#history-tbody', 5);
+    try {
+        const res = await api('/api/admin/scheduler/history');
+        if (!res || !res.success || !res.history || res.history.length === 0) {
+            showEmpty('#history-tbody', 5, '暂无执行历史 - 等待 cron 触发');
+            return;
+        }
+        
+        document.getElementById('history-tbody').innerHTML = res.history.slice(0, 10).map((h, idx) => {
+            const time = (h.completed_at || h.started_at || '').substring(0, 19);
+            const riskColor = h.max_risk_score >= 30 ? 'var(--danger)' : h.max_risk_score >= 10 ? 'var(--warning)' : 'var(--success)';
+            const status = h.success_count === h.target_count ? '✅' : '⚠️';
+            return `
+                <tr style="animation:fadeIn 0.3s ${idx*0.05}s both;">
+                    <td><span style="font-family:monospace;font-size:12px;">${time}</span></td>
+                    <td>${escapeHtml(h.schedule_name)}</td>
+                    <td><span style="font-size:12px;">${h.success_count + h.fail_count} (成功${h.success_count})</span></td>
+                    <td><span style="color:${riskColor};font-weight:600;">${h.max_risk_score}</span></td>
+                    <td><span style="font-size:16px;">${status}</span></td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        showError('#history-tbody', 5, '异常: ' + e.message);
+    }
+}
+
+function usePreset(expr) {
+    document.getElementById('sched-cron').value = expr;
+    parseCron();
+}
+
+async function parseCron() {
+    const expr = document.getElementById('sched-cron').value.trim();
+    if (!expr) return;
+    const div = document.getElementById('cron-preview');
+    div.innerHTML = '<span style="color:var(--warning);">⏳ 解析中...</span>';
+
+    try {
+        const r = await api('/api/admin/scheduler/parse', {
+            method:'POST', body: JSON.stringify({cron_expr: expr})
+        });
+        if (!r) { div.innerHTML = '<span style="color:var(--danger);">请求失败</span>'; return; }
+        if (r.success) {
+            const next = r.next_run ? new Date(r.next_run).toLocaleString('zh-CN') : '未计算';
+            // 使用 DOM API 避免 XSS
+            div.innerHTML = '<span style="color:var(--success);">✓ <desc></desc></span> <br><small style="color:var(--text-muted);">⏰ 下次触发: <next></next></small>';
+            div.querySelector('desc').textContent = r.description || '';
+            div.querySelector('next').textContent = next;
+        } else {
+            div.innerHTML = '<span style="color:var(--danger);">✗ <msg></msg></span>';
+            div.querySelector('msg').textContent = r.error || '';
+        }
+    } catch (e) {
+        div.innerHTML = '<span style="color:var(--danger);">解析异常</span>';
+    }
+}
+
+async function createSchedule() {
+    const name = document.getElementById('sched-name').value.trim();
+    const cron = document.getElementById('sched-cron').value.trim();
+    const targets = document.getElementById('sched-targets').value.split('\n').map(t => t.trim()).filter(Boolean);
+    const web = document.getElementById('sched-web').checked;
+    const threshold = parseInt(document.getElementById('sched-threshold').value);
+
+    if (!name || !cron) { toast('请填写名称和 cron 表达式', 'error'); return; }
+    if (targets.length === 0) { toast('至少输入一个目标 IP', 'error'); return; }
+
+    const btn = document.getElementById('create-sched-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 创建中...';
+    
+    try {
+        const r = await api('/api/admin/scheduler/create', {
+            method:'POST',
+            body: JSON.stringify({
+                name, cron_expr: cron, target_ips: targets,
+                enable_web_scan: web, risk_alert_threshold: threshold
+            })
+        });
+        if (r && r.success) {
+            toast('✓ 调度已创建');
+            document.getElementById('sched-name').value = '';
+            document.getElementById('sched-cron').value = '';
+            document.getElementById('sched-targets').value = '';
+            loadSchedules();
+            loadStatus();
+        } else {
+            toast('创建失败: ' + ((r && r.error) || ''), 'error');
+        }
+    } catch (e) {
+        toast('创建异常: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 创建调度';
+    }
+}
+
+async function toggleSchedule(id, enabled) {
+    try {
+        const r = await api(`/api/admin/scheduler/toggle/${id}`, {
+            method:'POST', body: JSON.stringify({enabled})
+        });
+        if (r && r.success) {
+            toast(enabled ? '✓ 已启用' : '✓ 已禁用');
+            loadSchedules();
+        }
+    } catch (e) {
+        toast('操作失败', 'error');
+    }
+}
+
+async function deleteSchedule(id) {
+    if (!confirm('确认删除此调度？\n\n历史执行记录将保留。')) return;
+    try {
+        const r = await api(`/api/admin/scheduler/delete/${id}`, {method:'POST'});
+        if (r && r.success) { toast('✓ 已删除'); loadSchedules(); loadStatus(); }
+    } catch (e) {
+        toast('删除失败', 'error');
+    }
+}
+
+async function startScheduler() {
+    try {
+        const r = await api('/api/admin/scheduler/start', {method:'POST'});
+        if (r && r.success) { toast('✓ 调度器已启动'); loadStatus(); }
+    } catch (e) {
+        toast('启动失败', 'error');
+    }
+}
+
+// CSS 动画
+const style = document.createElement('style');
+style.textContent = `
+@keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+`;
+document.head.appendChild(style);
+
+// 初始化
+loadStatus();
+loadSchedules();
+loadHistory();
+
+// 自动启动调度器（首次进入页面）
+setTimeout(() => {
+    const statusEl = document.getElementById('sched-status');
+    if (statusEl && statusEl.textContent.includes('已停止')) {
+        startScheduler();
+    }
+}, 1000);
+
+// 自动刷新
+setInterval(loadStatus, 30000);
+setInterval(loadHistory, 60000);
+</script>
+{% endblock %}

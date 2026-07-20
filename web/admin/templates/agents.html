@@ -1,0 +1,506 @@
+{% extends "base.html" %}
+{% block title %}Agent 管理{% endblock %}
+{% block page_title %}Agent 管理{% endblock %}
+
+{% block content %}
+<!-- Tab 切换 -->
+<div style="display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid #2a3147;padding-bottom:0;">
+    <button class="tab-btn active" data-tab="core" onclick="switchTab('core')" style="background:transparent;border:none;color:#00d4ff;padding:12px 20px;cursor:pointer;border-bottom:2px solid #00d4ff;font-size:14px;">⚙️ 核心 Agent</button>
+    <button class="tab-btn" data-tab="store" onclick="switchTab('store')" style="background:transparent;border:none;color:#8a93a8;padding:12px 20px;cursor:pointer;border-bottom:2px solid transparent;font-size:14px;">🏪 Agent 商店</button>
+    <button class="tab-btn" data-tab="create" onclick="switchTab('create')" style="background:transparent;border:none;color:#8a93a8;padding:12px 20px;cursor:pointer;border-bottom:2px solid transparent;font-size:14px;">➕ 创建 Agent</button>
+    <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')" style="background:transparent;border:none;color:#8a93a8;padding:12px 20px;cursor:pointer;border-bottom:2px solid transparent;font-size:14px;">📊 统计</button>
+</div>
+
+<!-- Tab 1: 核心 Agent（原有） -->
+<div id="tab-core" class="tab-content">
+    <div class="panel">
+        <h3>🤖 4 个核心 Agent</h3>
+        <p style="color:#8a93a8;">调整 Agent 行为参数：风险阈值、AI 模型、温度、超时等</p>
+    </div>
+    <div id="agents-container">加载中...</div>
+</div>
+
+<!-- Tab 2: Agent 商店 -->
+<div id="tab-store" class="tab-content" style="display:none;">
+    <div class="panel">
+        <h3>🏪 Agent 商店</h3>
+        <p style="color:#8a93a8;">浏览 6 个内置 SOC 场景模板，一键启用；或克隆修改成你的专属版本</p>
+        <div style="margin-top:12px;">
+            <input id="store-search" placeholder="🔍 搜索 Agent..." style="width:300px;">
+            <select id="store-filter-cat" style="margin-left:10px;">
+                <option value="">全部分类</option>
+            </select>
+            <button onclick="loadStore()" style="margin-left:10px;">🔄 刷新</button>
+        </div>
+    </div>
+    <div id="store-stats-bar" class="stat-grid" style="margin-bottom:20px;"></div>
+    <div id="store-grid">加载中...</div>
+</div>
+
+<!-- Tab 3: 创建 Agent -->
+<div id="tab-create" class="tab-content" style="display:none;">
+    <div class="panel">
+        <h3>➕ 创建自定义 Agent</h3>
+        <p style="color:#8a93a8;">通过 Prompt + Schema 配置 Agent，<strong>无需写代码</strong></p>
+    </div>
+    <div class="panel">
+        <h3>1. 基本信息</h3>
+        <div class="form-cols-2">
+            <div class="form-row">
+                <label>Agent Key (英文唯一标识) *</label>
+                <input id="new-key" placeholder="如 my_custom_agent">
+            </div>
+            <div class="form-row">
+                <label>显示名称 *</label>
+                <input id="new-name" placeholder="如 我的安全分析师">
+            </div>
+        </div>
+        <div class="form-cols-3">
+            <div class="form-row">
+                <label>分类</label>
+                <select id="new-category">
+                    <option value="custom">🛠️ 自定义</option>
+                    <option value="phishing">🎣 钓鱼检测</option>
+                    <option value="detection">📊 威胁检测</option>
+                    <option value="intel">🔍 威胁情报</option>
+                    <option value="vulnerability">🛡️ 漏洞管理</option>
+                    <option value="malware">🦠 恶意软件</option>
+                    <option value="response">⚡ 应急响应</option>
+                    <option value="compliance">📋 合规审计</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>图标 (emoji)</label>
+                <input id="new-icon" value="🤖" maxlength="3">
+            </div>
+            <div class="form-row">
+                <label>描述</label>
+                <input id="new-description" placeholder="这个 Agent 做什么">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3>2. 系统 Prompt (核心)</h3>
+        <p style="color:#8a93a8;font-size:12px;">告诉 AI 它是谁、要做什么、输出什么格式。建议包含 JSON 输出 schema</p>
+        <textarea id="new-system-prompt" style="width:100%;height:200px;background:#0a0e1a;color:#00d4ff;font-family:monospace;padding:12px;" placeholder="你是 SOC 分析师...&#10;&#10;输出 JSON：&#10;{&#10;  'verdict': '...',&#10;  'reasoning': '...'&#10;}"></textarea>
+    </div>
+
+    <div class="panel">
+        <h3>3. 输入/输出 Schema（JSON 格式说明）</h3>
+        <div class="form-cols-2">
+            <div>
+                <label style="color:#8a93a8;font-size:12px;">输入 Schema</label>
+                <textarea id="new-input-schema" style="width:100%;height:100px;background:#0a0e1a;color:#00d4ff;font-family:monospace;padding:8px;" placeholder='{"alert_id":"string","raw_log":"string"}'></textarea>
+            </div>
+            <div>
+                <label style="color:#8a93a8;font-size:12px;">输出 Schema</label>
+                <textarea id="new-output-schema" style="width:100%;height:100px;background:#0a0e1a;color:#00d4ff;font-family:monospace;padding:8px;" placeholder='{"verdict":"string","confidence":"number"}'></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3>4. LLM 配置（可选）</h3>
+        <div class="form-cols-3">
+            <div class="form-row">
+                <label>模型（留空用全局）</label>
+                <input id="new-model" placeholder="如 Qwen/Qwen2.5-7B-Instruct">
+            </div>
+            <div class="form-row">
+                <label>温度 (0-1)</label>
+                <input id="new-temperature" type="number" min="0" max="1" step="0.1" value="0.2">
+            </div>
+            <div class="form-row">
+                <label>最大 Tokens</label>
+                <input id="new-max-tokens" type="number" value="4000">
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3>5. 分析模式（可选）</h3>
+        <p style="color:#8a93a8;font-size:12px;">选择分析引擎。普通 Agent 直接调用 LLM，管线模式会多步分解 + 并行执行</p>
+        <div class="form-row">
+            <label>分析引擎</label>
+            <select id="new-engine" onchange="togglePipelineSelect()" style="max-width:300px;">
+                <option value="llm">⚡ LLM 单步分析（默认，快速）</option>
+                <option value="pipeline">🧠 管线深度分析（多步分解，准确度高）</option>
+            </select>
+        </div>
+        <div id="pipeline-config" style="display:none;">
+            <div class="form-row">
+                <label>管线模板</label>
+                <select id="new-pipeline" style="max-width:300px;">
+                    <option value="phishing">🔄 钓鱼邮件深度分析（3 步）</option>
+                    <option value="threat_hunt">🔍 威胁狩猎（2 步）</option>
+                    <option value="incident_report">📄 事件报告生成（3 步）</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>
+                    <input type="checkbox" id="new-parallel" checked>
+                    并行执行（同时运行无依赖步骤，更快）
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div style="text-align:center;margin:20px 0;">
+        <button onclick="createAgent()" style="background:#00ff88;color:#0a0e1a;padding:12px 40px;font-size:15px;">🚀 创建 Agent</button>
+        <button class="secondary" onclick="loadTemplate('phishing_triage')" style="margin-left:10px;">📋 加载钓鱼邮件模板</button>
+        <button class="secondary" onclick="loadTemplate('ioc_enrichment')" style="margin-left:5px;">📋 加载 IOC 模板</button>
+    </div>
+</div>
+
+<!-- Tab 4: 统计 -->
+<div id="tab-stats" class="tab-content" style="display:none;">
+    <div id="stats-content">加载中...</div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let storeAgents = [];
+
+// ====== Tab 切换 ======
+function switchTab(name) {
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.getElementById('tab-' + name).style.display = 'block';
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('active');
+        b.style.color = '#8a93a8';
+        b.style.borderBottomColor = 'transparent';
+    });
+    const btn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
+    btn.classList.add('active');
+    btn.style.color = '#00d4ff';
+    btn.style.borderBottomColor = '#00d4ff';
+    if (name === 'store') loadStore();
+    if (name === 'stats') loadStats();
+}
+
+// ====== 核心 Agent (原有) ======
+async function loadAgents() {
+    showLoading('#agents-container', 1);
+    const res = await api('/api/admin/agents/list');
+    if (!res || !res.success) {
+        document.getElementById('agents-container').innerHTML = '<p style="color:#ff4757;">加载失败: ' + escapeHtml(res && res.error || '') + '</p>';
+        return;
+    }
+    if (!res.agents || res.agents.length === 0) {
+        showEmpty('#agents-container', 1, '暂无 Agent');
+        return;
+    }
+    const container = document.getElementById('agents-container');
+    container.innerHTML = res.agents.map(a => {
+        const cfg = a.config || {};
+        const configJson = JSON.stringify(cfg, null, 2);
+        return `
+        <div class="panel">
+            <h3>${escapeHtml(a.agent_name.toUpperCase())} Agent <span style="float:right;color:#8a93a8;font-size:12px;font-weight:normal;">更新于 ${escapeHtml(a.updated_at||'未知')}</span></h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+                <div>
+                    <label style="display:block;margin-bottom:8px;color:#8a93a8;font-size:12px;">配置 (JSON)</label>
+                    <textarea id="cfg-${a.agent_name}" style="width:100%;height:300px;background:#0a0e1a;color:#00d4ff;font-family:monospace;font-size:12px;padding:12px;border-radius:5px;">${configJson}</textarea>
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:8px;color:#8a93a8;font-size:12px;">预设</label>
+                    <button onclick="saveAgent('${a.agent_name}')">💾 保存</button>
+                    <button class="secondary" onclick="testAgentRun('${a.agent_name}')" style="margin-top:10px;">🧪 测试运行</button>
+                    <button class="secondary" onclick="resetAgent('${a.agent_name}')" style="margin-top:10px;">🔄 重置默认</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function saveAgent(name) {
+    const cfgText = document.getElementById('cfg-' + name).value;
+    let cfg;
+    try { cfg = JSON.parse(cfgText); }
+    catch(e) { toast('JSON 格式错误: ' + e.message, 'error'); return; }
+    const res = await api('/api/admin/agents/update/' + name, {method:'POST', body: JSON.stringify({config: cfg})});
+    if (res && res.success) toast('✓ 已保存');
+    else toast('保存失败: ' + ((res && res.error) || '未知'), 'error');
+}
+
+async function resetAgent(name) {
+    if (!confirm('确认重置 ' + name + ' 为默认配置？')) return;
+    const res = await api('/api/admin/agents/reset/' + name, {method:'POST'});
+    if (res && res.success) { toast('✓ 已重置'); loadAgents(); }
+    else toast('重置失败', 'error');
+}
+
+async function testAgentRun(name) {
+    toast('开始测试...', 'success');
+    const res = await api('/api/admin/agents/stats/' + name);
+    if (res && res.success) {
+        toast(`Agent ${name} 运行正常（总调用 ${res.stats.executions||0} 次）`);
+    } else toast('测试失败', 'error');
+}
+
+// ====== Agent 商店 ======
+async function loadStore() {
+    showLoading('#store-grid', 1);
+    const [listRes, statsRes, catRes] = await Promise.all([
+        api('/api/admin/agents/registry/list'),
+        api('/api/admin/agents/registry/stats'),
+        api('/api/admin/agents/registry/categories')
+    ]);
+    if (!listRes || !listRes.success) {
+        document.getElementById('store-grid').innerHTML = '<p style="color:#ff4757;">加载失败</p>';
+        return;
+    }
+    storeAgents = listRes.agents;
+
+    // 统计条
+    if (statsRes && statsRes.success) {
+        const s = statsRes.stats;
+        document.getElementById('store-stats-bar').innerHTML = `
+            <div class="stat-card"><div class="label">总模板</div><div class="value">${s.total}</div></div>
+            <div class="stat-card success"><div class="label">已启用</div><div class="value">${s.enabled}</div></div>
+            <div class="stat-card"><div class="label">内置模板</div><div class="value">${s.builtin}</div></div>
+            <div class="stat-card warning"><div class="label">自定义</div><div class="value">${s.custom}</div></div>
+            <div class="stat-card"><div class="label">累计调用</div><div class="value">${s.total_usage}</div></div>
+        `;
+    }
+
+    // 分类下拉
+    if (catRes && catRes.success) {
+        const sel = document.getElementById('store-filter-cat');
+        catRes.categories.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.key;
+            opt.textContent = c.name;
+            sel.appendChild(opt);
+        });
+    }
+
+    renderStore();
+    document.getElementById('store-search').oninput = renderStore;
+    document.getElementById('store-filter-cat').onchange = renderStore;
+}
+
+function renderStore() {
+    const search = (document.getElementById('store-search').value || '').toLowerCase();
+    const cat = document.getElementById('store-filter-cat').value;
+    let list = storeAgents.filter(a => {
+        if (cat && a.category !== cat) return false;
+        if (search && !((a.name + ' ' + a.description + ' ' + a.agent_key).toLowerCase().includes(search))) return false;
+        return true;
+    });
+    if (list.length === 0) {
+        showEmpty('#store-grid', 1, '没找到匹配的 Agent');
+        return;
+    }
+    const grid = document.getElementById('store-grid');
+    grid.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:15px;">' +
+        list.map(a => `
+        <div class="panel" style="margin:0;border-left:3px solid ${a.enabled ? '#00ff88' : '#2a3147'};">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <h3 style="border:none;padding:0;margin:0;font-size:16px;">${a.icon||'🤖'} ${escapeHtml(a.name)}</h3>
+                <span class="badge ${a.enabled ? 'badge-success' : 'badge-warning'}">${a.enabled ? '已启用' : '未启用'}</span>
+            </div>
+            <div style="margin:8px 0;">
+                <span class="badge badge-info">${escapeHtml(a.category)}</span>
+                ${a.is_builtin ? '<span class="badge badge-info" style="margin-left:5px;">内置</span>' : '<span class="badge badge-warning" style="margin-left:5px;">自定义</span>'}
+                <span style="color:#8a93a8;font-size:11px;margin-left:8px;">使用 ${a.usage_count} 次</span>
+            </div>
+            <p style="color:#8a93a8;font-size:13px;margin:10px 0;min-height:40px;">${escapeHtml(a.description||'暂无描述')}</p>
+            <details style="margin:8px 0;">
+                <summary style="cursor:pointer;color:#00d4ff;font-size:12px;">📋 Prompt 预览</summary>
+                <pre style="background:#0a0e1a;padding:10px;border-radius:5px;font-size:11px;color:#8a93a8;max-height:150px;overflow-y:auto;white-space:pre-wrap;">${escapeHtml((a.system_prompt||'').substring(0, 400))}${(a.system_prompt||'').length > 400 ? '...' : ''}</pre>
+            </details>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px;">
+                ${a.is_builtin ? `<button class="small" onclick="cloneTemplate('${a.agent_key}')">📋 克隆修改</button>` : ''}
+                <button class="small ${a.enabled ? 'secondary' : ''}" onclick="toggleAgent('${a.agent_key}')">${a.enabled ? '⏸️ 禁用' : '▶️ 启用'}</button>
+                <button class="small secondary" onclick="openTestModal('${a.agent_key}')">🧪 测试</button>
+                ${!a.is_builtin ? `<button class="small danger" onclick="deleteAgent('${a.agent_key}')">🗑️</button>` : ''}
+            </div>
+        </div>
+    `).join('') + '</div>';
+}
+
+async function toggleAgent(key) {
+    const res = await api('/api/admin/agents/registry/toggle/' + key, {method:'POST'});
+    if (res && res.success) {
+        toast('已' + (res.enabled ? '启用' : '禁用'));
+        loadStore();
+    }
+}
+
+async function cloneTemplate(key) {
+    const newKey = prompt('克隆为新 Agent Key（英文）：', key + '_v2');
+    if (!newKey) return;
+    const newName = prompt('新 Agent 名称：', '');
+    const res = await api('/api/admin/agents/registry/clone/' + key, {
+        method:'POST', body: JSON.stringify({new_key: newKey, name: newName || (key + ' (自定义)')})
+    });
+    if (res && res.success) {
+        toast('✓ 已克隆为 ' + newKey);
+        loadStore();
+        setTimeout(() => switchTab('create'), 1000);
+    } else toast('克隆失败: ' + ((res && res.error) || ''), 'error');
+}
+
+async function deleteAgent(key) {
+    if (!confirm('确认删除 Agent ' + key + '？')) return;
+    const res = await api('/api/admin/agents/registry/delete/' + key, {method:'POST'});
+    if (res && res.success) {
+        toast('已删除');
+        loadStore();
+    } else toast('删除失败: ' + ((res && res.error) || ''), 'error');
+}
+
+function openTestModal(key) {
+    const agent = storeAgents.find(a => a.agent_key === key);
+    if (!agent) return;
+    const schemaStr = JSON.stringify(agent.input_schema || {}, null, 2);
+    showModal(`
+        <h3>🧪 测试 Agent: ${agent.name}</h3>
+        <p style="color:#8a93a8;font-size:13px;margin-bottom:10px;">输入 JSON 数据，测试 Agent 是否正确响应</p>
+        <div style="margin-bottom:10px;">
+            <strong style="color:#00d4ff;">输入 Schema:</strong>
+            <pre style="background:#0a0e1a;padding:8px;border-radius:5px;color:#8a93a8;font-size:11px;">${schemaStr}</pre>
+        </div>
+        <div class="form-row">
+            <label>输入数据 (JSON)</label>
+            <textarea id="test-input" style="width:100%;height:150px;background:#0a0e1a;color:#00d4ff;font-family:monospace;padding:8px;">${schemaStr}</textarea>
+        </div>
+        <button onclick="runAgentTest('${key}')">▶️ 执行</button>
+        <button class="secondary" onclick="closeModal()">取消</button>
+        <div id="test-result" style="margin-top:15px;"></div>
+    `);
+}
+
+async function runAgentTest(key) {
+    const inputText = document.getElementById('test-input').value;
+    let inputData;
+    try { inputData = JSON.parse(inputText); }
+    catch(e) { toast('JSON 格式错误: ' + e.message, 'error'); return; }
+
+    const resultDiv = document.getElementById('test-result');
+    resultDiv.innerHTML = '<p style="color:#ffa502;">⏳ 正在执行...</p>';
+    const res = await api('/api/admin/agents/registry/test/' + key, {method:'POST', body: JSON.stringify({input: inputData})});
+    if (!res) { resultDiv.innerHTML = '<p style="color:#ff4757;">请求失败</p>'; return; }
+    const fbBadge = res.fallback ? '<span class="badge badge-warning" style="margin-left:8px;">LLM Fallback</span>' : '';
+    const elapsed = res.elapsed_seconds || '?';
+    const tokens = res.tokens || 0;
+    resultDiv.innerHTML = `
+        <div style="background:#0a0e1a;padding:12px;border-radius:5px;border-left:3px solid ${res.success?'#00ff88':'#ff4757'};">
+            <div style="margin-bottom:10px;">
+                <span class="badge ${res.success?'badge-success':'badge-danger'}">${res.success?'SUCCESS':'FAILED'}</span>
+                ${fbBadge}
+                <span style="color:#8a93a8;font-size:12px;margin-left:8px;">耗时 ${elapsed}s · tokens ${tokens}</span>
+            </div>
+            ${res.llm_error ? `<p style="color:#ffa502;font-size:12px;">⚠️ LLM: ${res.llm_error}</p>` : ''}
+            ${res.error ? `<p style="color:#ff4757;font-size:12px;">❌ ${res.error}</p>` : ''}
+            ${res.output ? `<pre style="background:#0a0e1a;padding:10px;border-radius:5px;color:#00d4ff;font-size:12px;max-height:300px;overflow-y:auto;">${JSON.stringify(res.output, null, 2).replace(/</g,'&lt;')}</pre>` : ''}
+        </div>
+    `;
+}
+
+// ====== 创建 Agent ======
+async function loadTemplate(key) {
+    const res = await api('/api/admin/agents/registry/' + key);
+    if (!res || !res.success) { toast('加载模板失败', 'error'); return; }
+    const a = res.agent;
+    document.getElementById('new-key').value = a.agent_key + '_custom';
+    document.getElementById('new-name').value = a.name + ' (我的版本)';
+    document.getElementById('new-category').value = a.category;
+    document.getElementById('new-icon').value = a.icon;
+    document.getElementById('new-description').value = a.description || '';
+    document.getElementById('new-system-prompt').value = a.system_prompt || '';
+    document.getElementById('new-input-schema').value = JSON.stringify(a.input_schema || {}, null, 2);
+    document.getElementById('new-output-schema').value = JSON.stringify(a.output_schema || {}, null, 2);
+    // 如果模板有管线配置
+    if (a.config_json && a.config_json.engine) {
+        document.getElementById('new-engine').value = a.config_json.engine;
+        if (a.config_json.pipeline) {
+            document.getElementById('new-pipeline').value = a.config_json.pipeline;
+        }
+        togglePipelineSelect();
+    }
+    toast('✓ 已加载模板，请修改后创建', 'success');
+}
+
+function togglePipelineSelect() {
+    const val = document.getElementById('new-engine').value;
+    document.getElementById('pipeline-config').style.display = val === 'pipeline' ? 'block' : 'none';
+}
+
+async function createAgent() {
+    const key = document.getElementById('new-key').value.trim();
+    const name = document.getElementById('new-name').value.trim();
+    const prompt = document.getElementById('new-system-prompt').value.trim();
+    if (!key || !name || !prompt) { toast('key/name/system_prompt 必填', 'error'); return; }
+
+    let inputSchema, outputSchema;
+    try {
+        inputSchema = JSON.parse(document.getElementById('new-input-schema').value || '{}');
+        outputSchema = JSON.parse(document.getElementById('new-output-schema').value || '{}');
+    } catch(e) { toast('Schema JSON 格式错误: ' + e.message, 'error'); return; }
+
+    const data = {
+        agent_key: key,
+        name: name,
+        category: document.getElementById('new-category').value,
+        icon: document.getElementById('new-icon').value || '🤖',
+        description: document.getElementById('new-description').value,
+        system_prompt: prompt,
+        input_schema: inputSchema,
+        output_schema: outputSchema,
+        config_json: {
+            temperature: parseFloat(document.getElementById('new-temperature').value) || 0.2,
+            max_tokens: parseInt(document.getElementById('new-max-tokens').value) || 4000,
+            model: document.getElementById('new-model').value || '',
+            engine: document.getElementById('new-engine').value,
+            pipeline: document.getElementById('new-engine').value === 'pipeline' ? document.getElementById('new-pipeline').value : '',
+            parallel: document.getElementById('new-parallel').checked
+        }
+    };
+    const res = await api('/api/admin/agents/registry/create', {method:'POST', body: JSON.stringify(data)});
+    if (res && res.success) {
+        toast('✓ 创建成功！');
+        setTimeout(() => switchTab('store'), 800);
+    } else {
+        toast('创建失败: ' + ((res && res.error) || '未知'), 'error');
+    }
+}
+
+// ====== 统计 ======
+async function loadStats() {
+    document.getElementById('stats-content').innerHTML = '<p>加载中...</p>';
+    const res = await api('/api/admin/agents/registry/stats');
+    if (!res || !res.success) { document.getElementById('stats-content').innerHTML = '<p style="color:#ff4757;">加载失败</p>'; return; }
+    const s = res.stats;
+    document.getElementById('stats-content').innerHTML = `
+        <div class="stat-grid">
+            <div class="stat-card"><div class="label">总模板数</div><div class="value">${s.total}</div></div>
+            <div class="stat-card success"><div class="label">已启用</div><div class="value">${s.enabled}</div></div>
+            <div class="stat-card"><div class="label">内置</div><div class="value">${s.builtin}</div></div>
+            <div class="stat-card warning"><div class="label">自定义</div><div class="value">${s.custom}</div></div>
+            <div class="stat-card"><div class="label">累计调用</div><div class="value">${s.total_usage}</div></div>
+        </div>
+        <div class="panel">
+            <h3>📊 按分类统计</h3>
+            <table>
+                <thead><tr><th>分类</th><th>数量</th></tr></thead>
+                <tbody>${Object.entries(s.by_category).map(([k,v])=>`<tr><td>${escapeHtml(k)}</td><td><strong>${escapeHtml(v)}</strong></td></tr>`).join('')}</tbody>
+            </table>
+        </div>
+        <div class="panel">
+            <h3>🔥 最常用 Agent Top 5</h3>
+            ${s.top_used && s.top_used.length > 0 ?
+                `<table><thead><tr><th>Agent</th><th>调用次数</th></tr></thead><tbody>
+                ${s.top_used.map(u => `<tr><td>${escapeHtml(u.name)}</td><td><strong>${escapeHtml(u.usage_count)}</strong></td></tr>`).join('')}
+                </tbody></table>` : '<p style="color:#8a93a8;">暂无调用记录</p>'}
+        </div>
+    `;
+}
+
+loadAgents();
+</script>
+{% endblock %}

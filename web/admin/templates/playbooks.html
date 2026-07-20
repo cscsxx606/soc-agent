@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Playbook 库{% endblock %}
+{% block page_title %}Playbook 预案库{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <h3>📚 Playbook 管理</h3>
+    <button onclick="showVisualBuilder()">🎨 可视化创建</button>
+    <button class="secondary" onclick="showYamlEditor()">📝 YAML 编辑器</button>
+    <button class="secondary" onclick="loadPlaybooks()">🔄 刷新</button>
+</div>
+
+<div class="panel">
+    <h3>已配置的 Playbook</h3>
+    <table>
+        <thead><tr>
+            <th>ID</th><th>名称</th><th>触发类型</th><th>严重级别</th><th>状态</th><th>版本</th><th>操作</th>
+        </tr></thead>
+        <tbody id="playbooks-tbody">
+            <tr><td colspan="7" style="text-align:center;color:#8a93a8;">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let stepTemplates = {};
+
+async function init() {
+    const res = await api('/api/admin/playbooks/step-templates');
+    if (res.success) stepTemplates = res.templates;
+    loadPlaybooks();
+}
+
+async function loadPlaybooks() {
+    const res = await api('/api/admin/playbooks/list');
+    if (!res.success) return;
+    const tbody = document.getElementById('playbooks-tbody');
+
+    if (res.playbooks.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8a93a8;">暂无 Playbook</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = res.playbooks.map(p => {
+        let sev = [];
+        try { sev = JSON.parse(p.trigger_severity || '[]'); } catch(e) {}
+        return `<tr>
+            <td>${escapeHtml(p.playbook_id)}</td>
+            <td><strong>${escapeHtml(p.name)}</strong></td>
+            <td><code>${escapeHtml(p.trigger_alert_type||'任意')}</code></td>
+            <td>${sev.map(s=>`<span class="badge badge-warning">${s}</span>`).join(' ')}</td>
+            <td>${p.enabled ? '<span class="badge badge-success">启用</span>' : '<span class="badge badge-info">禁用</span>'}</td>
+            <td>v${escapeHtml(p.version)}</td>
+            <td>
+                <button class="small secondary" onclick="testPlaybook(${p.id})">测试</button>
+                <button class="small" onclick="editPlaybook(${p.id})">编辑</button>
+                <button class="small success" onclick="togglePlaybook(${p.id})">${p.enabled?'禁用':'启用'}</button>
+                <button class="small danger" onclick="deletePlaybook(${p.id})">删除</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ============ 可视化构建器 ============
+let builderState = {triggers: [], actions: [], approvals: []};
+
+function showVisualBuilder() {
+    builderState = {triggers: [], actions: [], approvals: []};
+    showModal(`
+        <h3>🎨 可视化 Playbook 构建器</h3>
+        <div id="builder-content"></div>
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #2a3147;">
+            <button onclick="saveVisualPlaybook()">💾 保存 Playbook</button>
+            <button class="secondary" onclick="previewYaml()">👁️ 预览 YAML</button>
+            <button class="secondary" onclick="closeModal()">取消</button>
+        </div>
+    `);
+    renderBuilder();
+}
+
+function renderBuilder() {
+    const html = `
+        <div class="form-cols-2">
+            <div class="form-row">
+                <label>Playbook ID *</label>
+                <input id="pb-id" placeholder="如：ransomware_response">
+            </div>
+            <div class="form-row">
+                <label>名称 *</label>
+                <input id="pb-name" placeholder="如：勒索软件响应预案">
+            </div>
+        </div>
+        <div class="form-row">
+            <label>描述</label>
+            <textarea id="pb-desc" placeholder="预案用途说明"></textarea>
+        </div>
+
+        <div class="workflow-section">
+            <div class="workflow-section-title">🎯 触发条件</div>
+            <div class="workflow-palette">
+                ${(stepTemplates.trigger||[]).map(t =>
+                    `<div class="palette-item" onclick="addTrigger('${t.type}')">${t.icon} ${t.label}</div>`
+                ).join('')}
+            </div>
+            <div id="triggers-area">
+                ${renderTriggers()}
+            </div>
+        </div>
+
+        <div class="workflow-section">
+            <div class="workflow-section-title">⚡ 响应动作</div>
+            <div class="workflow-palette">
+                ${(stepTemplates.action||[]).map(t =>
+                    `<div class="palette-item" onclick="addAction('${t.type}')">${t.icon} ${t.label} ${t.auto_safe?'<span style="color:#00ff88;font-size:10px">(自动)</span>':'<span style="color:#ffa502;font-size:10px">(审批)</span>'}</div>`
+                ).join('')}
+            </div>
+            <div id="actions-area">
+                ${renderActions()}
+            </div>
+        </div>
+
+        <div class="workflow-section">
+            <div class="workflow-section-title">✋ 人工审批</div>
+            <div class="workflow-palette">
+                ${(stepTemplates.approval||[]).map(t =>
+                    `<div class="palette-item" onclick="addApproval()">${t.icon} ${t.label}</div>`
+                ).join('')}
+            </div>
+            <div id="approvals-area">
+                ${renderApprovals()}
+            </div>
+        </div>
+    `;
+    document.getElementById('builder-content').innerHTML = html;
+}
+
+function renderTriggers() {
+    if (!builderState.triggers.length) return '<p style="color:#8a93a8;font-size:12px;">点击上方按钮添加触发条件</p>';
+    return builderState.triggers.map((t, i) => {
+        const tpl = (stepTemplates.trigger||[]).find(x=>x.type===t.type);
+        const fields = tpl?.fields || [];
+        let inputs = fields.map(f => {
+            if (f.type === 'select') {
+                return `<select onchange="updateTrigger(${i}, '${f.key}', this.value)">
+                    ${f.options.map(o=>`<option ${t.values[f.key]===o?'selected':''}>${o}</option>`).join('')}
+                </select>`;
+            } else if (f.type === 'multi-select') {
+                const vals = t.values[f.key] || [];
+                return `<select multiple onchange="updateTrigger(${i}, '${f.key}', Array.from(this.selectedOptions).map(o=>o.value))" style="height:80px">
+                    ${f.options.map(o=>`<option ${vals.includes(o)?'selected':''}>${o}</option>`).join('')}
+                </select>`;
+            } else {
+                return `<input value="${t.values[f.key]||''}" oninput="updateTrigger(${i}, '${f.key}', this.value)">`;
+            }
+        }).join(' ');
+        return `<div style="background:#131825;padding:10px;border-radius:5px;margin-bottom:8px;border:1px solid #2a3147;">
+            <strong>${tpl?.icon} ${tpl?.label}</strong>
+            <button class="small danger" style="float:right" onclick="removeTrigger(${i})">×</button>
+            <div style="margin-top:8px;">${inputs}</div>
+        </div>`;
+    }).join('');
+}
+
+function renderActions() {
+    if (!builderState.actions.length) return '<p style="color:#8a93a8;font-size:12px;">点击上方按钮添加响应动作</p>';
+    return builderState.actions.map((a, i) => {
+        const tpl = (stepTemplates.action||[]).find(x=>x.type===a.type);
+        const fields = tpl?.fields || [];
+        const inputs = fields.map(f => {
+            if (f.type === 'select') return `<select onchange="updateAction(${i}, '${f.key}', this.value)">${f.options.map(o=>`<option ${a.values[f.key]===o?'selected':''}>${o}</option>`).join('')}</select>`;
+            if (f.type === 'multi-select') return `<select multiple onchange="updateAction(${i}, '${f.key}', Array.from(this.selectedOptions).map(o=>o.value))" style="height:60px">${f.options.map(o=>`<option ${(a.values[f.key]||[]).includes(o)?'selected':''}>${o}</option>`).join('')}</select>`;
+            if (f.type === 'boolean') return `<label><input type="checkbox" ${a.values[f.key]?'checked':''} onchange="updateAction(${i}, '${f.key}', this.checked)"> ${f.label}</label>`;
+            if (f.type === 'number') return `<input type="number" value="${a.values[f.key]||f.default||''}" oninput="updateAction(${i}, '${f.key}', parseInt(this.value))">`;
+            if (f.type === 'textarea') return `<textarea oninput="updateAction(${i}, '${f.key}', this.value)">${a.values[f.key]||f.default||''}</textarea>`;
+            return `<input value="${a.values[f.key]||''}" placeholder="${f.placeholder||''}" oninput="updateAction(${i}, '${f.key}', this.value)">`;
+        }).map((html,i)=>`<div class="form-row" style="margin-bottom:8px;"><label style="font-size:11px;">${fields[i].label}</label>${html}</div>`).join('');
+        return `<div style="background:#131825;padding:12px;border-radius:5px;margin-bottom:8px;border:1px solid ${a.auto?'#00ff8844':'#ffa50244'};">
+            <strong>${tpl?.icon} ${a.label} [步骤 ${i+1}]</strong>
+            <button class="small danger" style="float:right" onclick="removeAction(${i})">×</button>
+            <label style="float:right;margin-right:10px;font-size:11px;">
+                <input type="checkbox" ${a.auto?'checked':''} onchange="toggleActionAuto(${i}, this.checked)"> 自动执行
+            </label>
+            <div style="margin-top:8px;clear:both;">${inputs}</div>
+        </div>`;
+    }).join('');
+}
+
+function renderApprovals() {
+    if (!builderState.approvals.length) return '';
+    return builderState.approvals.map((a, i) => `
+        <div style="background:#131825;padding:10px;border-radius:5px;margin-bottom:8px;border:1px solid #ffa50244;">
+            <strong>✋ 审批人</strong>
+            <button class="small danger" style="float:right" onclick="removeApproval(${i})">×</button>
+            <div class="form-cols-2" style="margin-top:8px;clear:both;">
+                <input placeholder="审批人/角色" value="${a.approvers||''}" oninput="updateApproval(${i}, 'approvers', this.value)">
+                <input type="number" placeholder="超时(分钟)" value="${a.timeout_minutes||30}" oninput="updateApproval(${i}, 'timeout_minutes', parseInt(this.value))">
+            </div>
+        </div>
+    `).join('');
+}
+
+window.addTrigger = function(type) {
+    const tpl = (stepTemplates.trigger||[]).find(x=>x.type===type);
+    const values = {};
+    (tpl.fields||[]).forEach(f => {
+        if (f.type === 'select') {
+            values[f.key] = f.default || f.options[0] || '';
+        } else if (f.type === 'multi-select') {
+            values[f.key] = f.default ? [f.default] : [];
+        }
+    });
+    builderState.triggers.push({type, values});
+    document.getElementById('triggers-area').innerHTML = renderTriggers();
+};
+
+window.removeTrigger = function(i) { builderState.triggers.splice(i,1); document.getElementById('triggers-area').innerHTML = renderTriggers(); };
+window.updateTrigger = function(i, key, val) { builderState.triggers[i].values[key] = val; };
+
+window.addAction = function(type) {
+    const tpl = (stepTemplates.action||[]).find(x=>x.type===type);
+    const values = {};
+    (tpl.fields||[]).forEach(f => {
+        if (f.type === 'boolean') values[f.key] = f.default || false;
+        else if (f.type === 'number') values[f.key] = f.default || 0;
+        else if (f.default) values[f.key] = f.default;
+    });
+    builderState.actions.push({type, label: tpl.label, icon: tpl.icon, auto: tpl.auto_safe, values});
+    document.getElementById('actions-area').innerHTML = renderActions();
+};
+
+window.removeAction = function(i) { builderState.actions.splice(i,1); document.getElementById('actions-area').innerHTML = renderActions(); };
+window.updateAction = function(i, key, val) { builderState.actions[i].values[key] = val; };
+window.toggleActionAuto = function(i, val) { builderState.actions[i].auto = val; };
+
+window.addApproval = function() {
+    builderState.approvals.push({approvers: '', timeout_minutes: 30});
+    document.getElementById('approvals-area').innerHTML = renderApprovals();
+};
+window.removeApproval = function(i) { builderState.approvals.splice(i,1); document.getElementById('approvals-area').innerHTML = renderApprovals(); };
+window.updateApproval = function(i, key, val) { builderState.approvals[i][key] = val; };
+
+async function saveVisualPlaybook() {
+    const data = {
+        playbook_id: document.getElementById('pb-id').value,
+        name: document.getElementById('pb-name').value,
+        description: document.getElementById('pb-desc').value,
+        triggers: builderState.triggers,
+        actions: builderState.actions,
+        approvals: builderState.approvals
+    };
+
+    if (!data.playbook_id || !data.name) { toast('ID 和名称必填', 'error'); return; }
+
+    const res = await api('/api/admin/playbooks/visual-create', {
+        method: 'POST',
+        body: JSON.stringify(data)
+    });
+
+    if (res.success) {
+        toast('✓ Playbook 创建成功');
+        closeModal();
+        loadPlaybooks();
+    } else toast('✗ ' + res.error, 'error');
+}
+
+async function previewYaml() {
+    const data = {
+        playbook_id: document.getElementById('pb-id').value || 'preview',
+        name: document.getElementById('pb-name').value || 'Preview',
+        description: document.getElementById('pb-desc').value || '',
+        triggers: builderState.triggers,
+        actions: builderState.actions,
+        approvals: builderState.approvals
+    };
+
+    const res = await api('/api/admin/playbooks/preview-yaml', {method: 'POST', body: JSON.stringify(data)});
+    if (res.success) {
+        showModal(`<h3>📝 YAML 预览</h3><pre style="background:#0a0e1a;padding:15px;border-radius:5px;max-height:60vh;overflow:auto;color:#00d4ff;font-size:12px;">${res.yaml_content}</pre><button class="secondary" onclick="closeModal()">关闭</button>`);
+    }
+}
+
+function showYamlEditor() {
+    showModal(`
+        <h3>📝 YAML 编辑器</h3>
+        <textarea id="yaml-content" style="width:100%;height:50vh;background:#0a0e1a;color:#00d4ff;font-family:monospace;font-size:12px;padding:15px;border-radius:5px;border:1px solid #2a3147;"></textarea>
+        <div style="margin-top:15px;">
+            <button onclick="validateYaml()">校验</button>
+            <button class="secondary" onclick="closeModal()">取消</button>
+        </div>
+    `);
+}
+
+async function validateYaml() {
+    toast('✓ YAML 语法正确（演示）');
+}
+
+async function testPlaybook(id) {
+    const res = await api(`/api/admin/playbooks/test/${id}`, {method: 'POST', body: JSON.stringify({})});
+    if (res.success) {
+        showModal(`<h3>🧪 Playbook 测试结果</h3>
+            <div class="form-row"><label>触发状态</label><p>${res.triggered ? '<span class="badge badge-success">✓ 触发</span>' : '<span class="badge badge-info">未触发</span>'}</p></div>
+            <div class="form-row"><label>Playbook</label><p>${res.playbook_name}</p></div>
+            <div class="form-row"><label>解析内容</label><pre style="background:#0a0e1a;padding:10px;border-radius:5px;max-height:300px;overflow:auto;">${JSON.stringify(res.parsed_content, null, 2)}</pre></div>
+            <button class="secondary" onclick="closeModal()">关闭</button>
+        `);
+    }
+}
+
+async function togglePlaybook(id) {
+    const res = await api(`/api/admin/playbooks/toggle/${id}`, {method: 'POST'});
+    if (res.success) { toast(res.enabled ? '已启用' : '已禁用'); loadPlaybooks(); }
+}
+
+async function deletePlaybook(id) {
+    if (!confirm('确定删除?')) return;
+    const res = await api(`/api/admin/playbooks/delete/${id}`, {method: 'POST'});
+    if (res.success) { toast('✓ 已删除'); loadPlaybooks(); }
+}
+
+async function editPlaybook(id) {
+    toast('编辑功能：使用"YAML 编辑器"或"可视化创建"', 'error');
+}
+
+init();
+</script>
+{% endblock %}

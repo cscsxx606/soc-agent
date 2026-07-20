@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+{% block title %}数据源管理{% endblock %}
+{% block page_title %}数据源管理{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+    <div class="stat-card">
+        <div class="label">总数据源</div>
+        <div class="value" id="stat-total">-</div>
+    </div>
+    <div class="stat-card success">
+        <div class="label">正常</div>
+        <div class="value" id="stat-healthy">-</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="label">异常</div>
+        <div class="value" id="stat-failed">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">已启用</div>
+        <div class="value" id="stat-enabled">-</div>
+    </div>
+</div>
+
+<div class="panel" style="padding:16px 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input type="text" id="source-search" placeholder="🔍 搜索数据源..." style="width:220px;" onkeyup="if(event.key==='Enter')loadSources()">
+            <select id="type-filter" style="width:140px;" onchange="loadSources()">
+                <option value="">所有类型</option>
+            </select>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button class="success" onclick="showAddSourceModal()">➕ 新增数据源</button>
+            <button class="small" onclick="loadSources()">🔄 刷新</button>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <h3>🔌 已配置的数据源</h3>
+    <div style="overflow-x:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>类型</th>
+                    <th>状态</th>
+                    <th>最后同步</th>
+                    <th>同步结果</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="sources-tbody">
+                <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let sourceTemplates = {};
+let allSources = [];
+
+async function init() {
+    const res = await api('/api/admin/sources/templates');
+    if (res.success) {
+        sourceTemplates = res.templates;
+        // 填充类型筛选
+        const typeSel = document.getElementById('type-filter');
+        Object.entries(res.templates).forEach(([k, v]) => {
+            const opt = document.createElement('option');
+            opt.value = k;
+            opt.textContent = (v.icon || '') + ' ' + v.name;
+            typeSel.appendChild(opt);
+        });
+    }
+    loadSources();
+}
+
+async function loadSources() {
+    showLoading('#sources-tbody', 6);
+    const search = document.getElementById('source-search').value.toLowerCase();
+    const typeFilter = document.getElementById('type-filter').value;
+    
+    try {
+        const res = await api('/api/admin/sources/list');
+        if (!res.success) {
+            showError('#sources-tbody', 6, res.error || '加载失败');
+            return;
+        }
+        
+        allSources = res.sources || [];
+        
+        // 客户端筛选
+        let filtered = allSources;
+        if (search) {
+            filtered = filtered.filter(s => (s.name || '').toLowerCase().includes(search));
+        }
+        if (typeFilter) {
+            filtered = filtered.filter(s => s.type === typeFilter);
+        }
+        
+        updateStats(allSources);
+        
+        const tbody = document.getElementById('sources-tbody');
+        if (filtered.length === 0) {
+            showEmpty('#sources-tbody', 6, '暂无数据源，点击"新增数据源"开始');
+            return;
+        }
+
+        tbody.innerHTML = filtered.map((s, idx) => {
+            const lastSync = s.last_sync ? s.last_sync.slice(0,19).replace('T',' ') : '从未';
+            const statusBadge = s.enabled 
+                ? '<span class="badge badge-success">● 启用</span>' 
+                : '<span class="badge badge-info">○ 禁用</span>';
+            const resultBadge = s.last_status === 'success' 
+                ? '<span class="badge badge-success">✓ 成功</span>' :
+                s.last_status === 'failed' 
+                ? '<span class="badge badge-danger">✗ 失败</span>' 
+                : '<span style="color:var(--text-muted);">-</span>';
+            const tpl = sourceTemplates[s.type] || {};
+            const statusIcon = s.last_status === 'success' ? '🟢' : s.last_status === 'failed' ? '🔴' : '⚪';
+            
+            return `
+                <tr style="animation:fadeIn 0.3s ${idx*0.05}s both;">
+                    <td>
+                        <strong>${escapeHtml(s.name)}</strong>
+                        <div style="font-size:11px;color:var(--text-muted);">ID: ${escapeHtml(s.id)}</div>
+                    </td>
+                    <td>
+                        <span style="font-size:18px;margin-right:4px;">${tpl.icon||'🔌'}</span>
+                        <span>${escapeHtml(tpl.name||s.type)}</span>
+                    </td>
+                    <td>${statusBadge}</td>
+                    <td><span style="font-family:monospace;font-size:12px;">${lastSync}</span></td>
+                    <td>${resultBadge}</td>
+                    <td>
+                        <div style="display:flex;gap:4px;">
+                            <button class="small" onclick="testSource(${s.id})" title="测试连接">🔌</button>
+                            <button class="small success" onclick="syncSource(${s.id})" title="同步">🔄</button>
+                            <button class="small secondary" onclick="editSource(${s.id})" title="编辑">✏️</button>
+                            <button class="small danger" onclick="deleteSource(${s.id})" title="删除">🗑️</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        showError('#sources-tbody', 6, '异常: ' + e.message);
+    }
+}
+
+function updateStats(sources) {
+    document.getElementById('stat-total').textContent = sources.length;
+    document.getElementById('stat-healthy').textContent = sources.filter(s => s.last_status === 'success').length;
+    document.getElementById('stat-failed').textContent = sources.filter(s => s.last_status === 'failed').length;
+    document.getElementById('stat-enabled').textContent = sources.filter(s => s.enabled).length;
+}
+
+async function showAddSourceModal() {
+    const typeOptions = Object.entries(sourceTemplates).map(([k,v]) =>
+        `<option value="${k}">${v.icon} ${v.name}</option>`).join('');
+
+    showModal(`<h3>➕ 新增数据源</h3>
+        <div class="form-row">
+            <label>数据源类型 *</label>
+            <select id="src-type" onchange="renderFields()" style="width:100%;">${typeOptions}</select>
+        </div>
+        <div class="form-row">
+            <label>显示名称 *</label>
+            <input id="src-name" placeholder="如：生产环境 Splunk">
+        </div>
+        <div id="src-fields"></div>
+        <div style="background:rgba(0,212,255,0.05);padding:12px;border-radius:6px;margin-top:16px;">
+            <span style="color:var(--accent);font-size:12px;">💡 提示：保存前建议先点击"测试连接"验证配置</span>
+        </div>
+        <div style="text-align:center;margin-top:20px;">
+            <button onclick="submitSource()">💾 保存</button>
+            <button class="secondary" onclick="testSourceConfig()">🔌 测试连接</button>
+            <button class="secondary" onclick="closeModal()">取消</button>
+        </div>
+    `);
+    renderFields();
+}
+
+function renderFields() {
+    const type = document.getElementById('src-type').value;
+    const tpl = sourceTemplates[type];
+    if (!tpl) return;
+    const fields = tpl.fields || [];
+
+    let html = `<div style="background:rgba(0,212,255,0.05);padding:10px;border-radius:6px;margin-bottom:12px;">
+        <span style="color:var(--text-muted);font-size:12px;">${tpl.description || ''}</span>
+    </div>`;
+    
+    fields.forEach(f => {
+        const required = f.required ? ' *' : '';
+        if (f.type === 'boolean') {
+            html += `<div class="form-row">
+                <label><input type="checkbox" id="f-${f.key}" ${f.default?'checked':''}> ${f.label}${required}</label>
+            </div>`;
+        } else if (f.type === 'select') {
+            html += `<div class="form-row">
+                <label>${f.label}${required}</label>
+                <select id="f-${f.key}" style="width:100%;">${f.options.map(o=>`<option ${o==f.default?'selected':''}>${o}</option>`).join('')}</select>
+            </div>`;
+        } else if (f.type === 'textarea') {
+            html += `<div class="form-row">
+                <label>${f.label}${required}</label>
+                <textarea id="f-${f.key}" placeholder="${f.placeholder||''}" style="width:100%;height:80px;">${f.default||''}</textarea>
+            </div>`;
+        } else if (f.type === 'number') {
+            html += `<div class="form-row">
+                <label>${f.label}${required}</label>
+                <input type="number" id="f-${f.key}" value="${f.default||''}" ${f.min!==undefined?'min='+f.min:''} ${f.max!==undefined?'max='+f.max:''}>
+            </div>`;
+        } else {
+            html += `<div class="form-row">
+                <label>${f.label}${required}</label>
+                <input type="${f.type||'text'}" id="f-${f.key}" placeholder="${f.placeholder||''}" value="${f.default||''}">
+            </div>`;
+        }
+    });
+    document.getElementById('src-fields').innerHTML = html;
+}
+
+async function submitSource() {
+    const type = document.getElementById('src-type').value;
+    const name = document.getElementById('src-name').value.trim();
+    if (!name) { toast('请输入数据源名称', 'error'); return; }
+    
+    const tpl = sourceTemplates[type];
+    const config = {};
+    (tpl.fields || []).forEach(f => {
+        const el = document.getElementById('f-' + f.key);
+        if (!el) return;
+        if (f.type === 'boolean') config[f.key] = el.checked;
+        else if (f.type === 'number') config[f.key] = parseInt(el.value) || 0;
+        else config[f.key] = el.value;
+    });
+
+    const res = await api('/api/admin/sources/create', {
+        method: 'POST',
+        body: JSON.stringify({name, type, config, enabled: 1})
+    });
+    if (res.success) {
+        toast('✓ 数据源创建成功');
+        closeModal();
+        loadSources();
+    } else {
+        toast('✗ ' + res.error, 'error');
+    }
+}
+
+async function testSourceConfig() {
+    const type = document.getElementById('src-type').value;
+    const tpl = sourceTemplates[type];
+    const config = {};
+    (tpl.fields || []).forEach(f => {
+        const el = document.getElementById('f-' + f.key);
+        if (!el) return;
+        if (f.type === 'boolean') config[f.key] = el.checked;
+        else if (f.type === 'number') config[f.key] = parseInt(el.value) || 0;
+        else config[f.key] = el.value;
+    });
+
+    toast('🔌 正在测试连接...', 'success');
+    const res = await api('/api/admin/sources/test', {
+        method: 'POST',
+        body: JSON.stringify({type, config})
+    });
+    if (res.success) {
+        toast('✓ ' + (res.message || '连接成功'));
+    } else {
+        toast('✗ ' + (res.error || '连接失败'), 'error');
+    }
+}
+
+async function testSource(id) {
+    toast('🔌 正在测试连接...', 'success');
+    const res = await api(`/api/admin/sources/test`, {
+        method: 'POST',
+        body: JSON.stringify({id})
+    });
+    if (res.success) toast('✓ ' + (res.message||'连接成功'));
+    else toast('✗ ' + (res.error||'失败'), 'error');
+}
+
+async function syncSource(id) {
+    toast('🔄 正在同步...', 'success');
+    const res = await api(`/api/admin/sources/sync/${id}`, {method: 'POST'});
+    if (res.success) {
+        toast('✓ ' + res.message);
+        loadSources();
+    } else toast('✗ ' + res.error, 'error');
+}
+
+async function editSource(id) {
+    // 获取数据源详情
+    const res = await api('/api/admin/sources/list');
+    if (!res || !res.success) return;
+    const source = (res.sources || []).find(s => s.id === id);
+    if (!source) { toast('未找到该数据源', 'error'); return; }
+    
+    const tpl = sourceTemplates[source.type] || {};
+    const tplFields = tpl.fields || [];
+    const config = source.config || {};
+    
+    let fieldsHtml = tplFields.map(f => {
+        const val = config[f.key] || f.default || '';
+        if (f.type === 'boolean') {
+            return `<div class="form-row"><label><input type="checkbox" id="ef-${f.key}" ${val?'checked':''}> ${f.label}</label></div>`;
+        } else if (f.type === 'select') {
+            return `<div class="form-row"><label>${f.label}</label><select id="ef-${f.key}">${f.options.map(o=>`<option ${o==val?'selected':''}>${o}</option>`).join('')}</select></div>`;
+        } else {
+            return `<div class="form-row"><label>${f.label}</label><input type="${f.type||'text'}" id="ef-${f.key}" value="${val}"></div>`;
+        }
+    }).join('');
+    
+    showModal(`<h3>✏️ 编辑数据源: ${source.name}</h3>
+        <div class="form-row"><label>名称</label><input id="edit-src-name" value="${source.name}"></div>
+        ${fieldsHtml}
+        <div style="text-align:center;margin-top:20px;">
+            <button onclick="saveEditSource(${id})">💾 保存</button>
+            <button class="secondary" onclick="closeModal()">取消</button>
+        </div>
+    `);
+}
+
+async function saveEditSource(id) {
+    const name = document.getElementById('edit-src-name').value.trim();
+    if (!name) { toast('名称不能为空', 'error'); return; }
+    
+    const res = await api('/api/admin/sources/list');
+    if (!res || !res.success) return;
+    const source = (res.sources || []).find(s => s.id === id);
+    if (!source) return;
+    
+    const tpl = sourceTemplates[source.type] || {};
+    const config = {};
+    (tpl.fields || []).forEach(f => {
+        const el = document.getElementById('ef-' + f.key);
+        if (!el) return;
+        if (f.type === 'boolean') config[f.key] = el.checked;
+        else if (f.type === 'number') config[f.key] = parseInt(el.value) || 0;
+        else config[f.key] = el.value;
+    });
+    
+    const updateRes = await api('/api/admin/sources/update/' + id, {
+        method: 'POST',
+        body: JSON.stringify({name, config})
+    });
+    if (updateRes && updateRes.success) {
+        toast('✓ 数据源已更新');
+        closeModal();
+        loadSources();
+    } else {
+        toast('更新失败', 'error');
+    }
+}
+
+async function deleteSource(id) {
+    if (!confirm('确定删除此数据源?\n\n此操作不可恢复！')) return;
+    const res = await api(`/api/admin/sources/delete/${id}`, {method: 'POST'});
+    if (res.success) { toast('✓ 已删除'); loadSources(); }
+}
+
+// CSS 动画
+const style = document.createElement('style');
+style.textContent = `
+@keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+`;
+document.head.appendChild(style);
+
+init();
+</script>
+{% endblock %}

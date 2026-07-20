@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}系统设置{% endblock %}
+{% block page_title %}系统设置{% endblock %}
+
+{% block content %}
+<!-- 设置分类导航 -->
+<div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+    <button class="small" onclick="scrollToCategory('general')">🌐 通用</button>
+    <button class="small" onclick="scrollToCategory('api_keys')">🔑 API 密钥</button>
+    <button class="small" onclick="scrollToCategory('notifications')">📢 通知</button>
+    <button class="small" onclick="scrollToCategory('storage')">💾 存储</button>
+    <button class="small" onclick="scrollToCategory('security')">🔒 安全</button>
+</div>
+
+<div class="panel">
+    <h3>⚙️ 系统配置</h3>
+    <p style="color:var(--text-muted);font-size:13px;">配置站点信息、API 密钥、通知通道等。修改后自动保存。</p>
+</div>
+
+<!-- 引擎快速切换 -->
+<div class="panel" style="animation:fadeIn 0.4s both;">
+    <h3>🤖 编排引擎</h3>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <select id="engine-select" style="width:240px;">
+            <option value="auto">🔄 自动选择（推荐）</option>
+            <option value="crewai">🤖 CrewAI 引擎</option>
+            <option value="legacy">⚙️ 自研引擎</option>
+        </select>
+        <button onclick="saveEngine()">💾 保存引擎设置</button>
+        <span id="engine-status" style="font-size:12px;color:var(--text-muted);"></span>
+    </div>
+</div>
+
+<div id="settings-container">
+    <div style="text-align:center;padding:40px;color:var(--text-muted);">
+        <div class="loading">加载中...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const categoryConfig = {
+    general: { name: '通用设置', icon: '🌐', desc: '站点名称、Logo、编排引擎等基础配置' },
+    api_keys: { name: 'API 密钥', icon: '🔑', desc: '外部服务 API 密钥管理（加密存储）' },
+    notifications: { name: '通知通道', icon: '📢', desc: '飞书/钉钉/邮件告警配置' },
+    storage: { name: '存储配置', icon: '💾', desc: '数据保留策略、备份设置' },
+    security: { name: '安全设置', icon: '🔒', desc: '登录策略、密码规则、会话超时' }
+};
+
+async function loadSettings() {
+    const container = document.getElementById('settings-container');
+    try {
+        const res = await api('/api/admin/settings/list');
+        if (!res.success) {
+            container.innerHTML = `<div class="empty-state"><div class="icon">&#9888;&#65039;</div><p>加载失败: ${escapeHtml(res.error || '未知错误')}</p></div>`;
+            return;
+        }
+
+        // 加载引擎配置
+        let engineVal = 'auto';
+        for (const items of Object.values(res.settings)) {
+            for (const s of items) {
+                if (s.key === 'engine.orchestrator') {
+                    engineVal = s.value || 'auto';
+                }
+            }
+        }
+        document.getElementById('engine-select').value = engineVal;
+
+        container.innerHTML = Object.entries(res.settings).map(([cat, items]) => {
+            const cfg = categoryConfig[cat] || { name: cat, icon: '&#9881;&#65039;', desc: '' };
+            return `
+                <div class="panel" id="cat-${cat}" style="animation:fadeIn 0.4s both;">
+                    <h3>${cfg.icon} ${cfg.name}</h3>
+                    <p style="color:var(--text-muted);font-size:12px;margin-bottom:16px;">${cfg.desc}</p>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
+                        ${items.map(s => {
+                            if (s.key === 'engine.orchestrator') return '';
+                            const encrypted = s.encrypted ? '<span class="badge badge-warning">&#128274; 加密</span>' : '';
+                            const required = s.required ? '<span class="badge badge-danger">* 必填</span>' : '';
+                            const desc = s.description ? '<div style="color:var(--text-muted);font-size:11px;margin-top:6px;">&#128161; '+escapeHtml(s.description)+'</div>' : '';
+                            const label = '<label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;"><strong>'+s.key+'</strong>'+encrypted+required+'</label>';
+                            if (s.encrypted && s.has_value) {
+                                return '<div class="form-row" style="background:var(--bg-input);padding:12px;border-radius:var(--radius-sm);border:1px solid var(--border);">'+label
+                                    +'<div style="display:flex;gap:8px;align-items:center;"><div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);font-family:monospace;font-size:12px;color:var(--text-muted);">&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;</div>'
+                                    +'<button class="small secondary" onclick="editEncryptedSetting(\''+s.key+'\')">&#128273; 修改</button></div>'+desc+'</div>';
+                            }
+                            return '<div class="form-row" style="background:var(--bg-input);padding:12px;border-radius:var(--radius-sm);border:1px solid var(--border);">'+label
+                                +'<div style="display:flex;gap:8px;align-items:center;">'
+                                +'<input value="'+(s.value||'')+'" placeholder="请输入..." style="flex:1;" onchange="updateSetting(\''+s.key+'\', this.value)">'
+                                +(s.value ? '<button class="small outline" onclick="this.previousElementSibling.value=\'\';updateSetting(\''+s.key+'\', \'\')" title="清空">&#128465;&#65039;</button>' : '')
+                                +'</div>'+desc+'</div>';
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">&#10060;</div><p>加载异常: '+e.message+'</p></div>';
+    }
+}
+
+async function saveEngine() {
+    const val = document.getElementById('engine-select').value;
+    const status = document.getElementById('engine-status');
+    status.textContent = '保存中...';
+    const res = await api('/api/admin/settings/update', {
+        method: 'POST',
+        body: JSON.stringify({key: 'engine.orchestrator', value: val})
+    });
+    if (res && res.success) {
+        status.textContent = '&#9989; 已保存，重启流水线后生效';
+        status.style.color = 'var(--success)';
+        toast('&#9989; 引擎设置已保存');
+    } else {
+        status.textContent = '&#10060; 保存失败';
+        status.style.color = 'var(--danger)';
+    }
+}
+
+async function updateSetting(key, value) {
+    const res = await api('/api/admin/settings/update', {
+        method: 'POST',
+        body: JSON.stringify({key, value})
+    });
+    if (res && res.success) {
+        toast('&#9989; ' + key + ' 已保存');
+    } else {
+        toast('&#10060; 保存失败: ' + (res && res.error || ''), 'error');
+    }
+}
+
+function editEncryptedSetting(key) {
+    showModal('<h3>&#128273; 修改 '+key+'</h3>'
+        +'<div class="form-row"><label>新值</label><input type="password" id="new-value" placeholder="输入新的密钥值" style="width:100%;"></div>'
+        +'<div style="background:rgba(255,165,2,0.08);padding:12px;border-radius:6px;margin-top:12px;"><span style="color:var(--warning);font-size:12px;">&#9888;&#65039; 密钥将被加密存储，修改后立即生效</span></div>'
+        +'<div style="text-align:center;margin-top:20px;"><button onclick="saveEncrypted(\''+key+'\')">&#128190; 保存</button>'
+        +'<button class="secondary" onclick="closeModal()">取消</button></div>');
+}
+
+async function saveEncrypted(key) {
+    const value = document.getElementById('new-value').value;
+    if (!value) { toast('请输入密钥值', 'error'); return; }
+    const res = await api('/api/admin/settings/update', {method: 'POST', body: JSON.stringify({key, value})});
+    if (res && res.success) { toast('&#9989; 已加密保存'); closeModal(); loadSettings(); }
+    else toast('保存失败', 'error');
+}
+
+function scrollToCategory(cat) {
+    const el = document.getElementById('cat-' + cat);
+    if (el) {
+        el.scrollIntoView({behavior: 'smooth', block: 'start'});
+        el.style.borderColor = 'var(--accent)';
+        setTimeout(() => { el.style.borderColor = ''; }, 1000);
+    }
+}
+
+const style = document.createElement('style');
+style.textContent = '@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }';
+document.head.appendChild(style);
+loadSettings();
+</script>
+{% endblock %}

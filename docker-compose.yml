@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # ========== SOC 管理后台 ==========
+  soc-server:
+    build: .
+    container_name: soc-server
+    restart: unless-stopped
+    ports:
+      - "8889:8889"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - SOC_ADMIN_FLASK_SECRET=${SOC_ADMIN_FLASK_SECRET:-}
+      - TZ=Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8889/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========== Osquery EDR 探针管理 ==========
+  # 用于接收被管理主机的 osquery 心跳和查询结果
+  # 部署方式：在被管理主机上运行 osqueryd，配置 tls_hostname 指向此服务器
+  # 示例 osquery 配置:
+  #   --tls_hostname=soc.yourcompany.com:9000
+  #   --enroll_secret_path=/etc/osquery/enroll_secret
+  soc-edr:
+    build: .
+    container_name: soc-edr
+    restart: unless-stopped
+    ports:
+      - "9000:9000"    # Osquery TLS API
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./edr/enroll_secret:/etc/osquery/enroll_secret:ro
+    environment:
+      - SOC_ADMIN_FLASK_SECRET=${SOC_ADMIN_FLASK_SECRET:-}
+      - EDR_MODE=agent
+      - EDR_PORT=9000
+      - TZ=Asia/Shanghai
+    depends_on:
+      - soc-server
+    command: ["gunicorn", "-w", "2", "-k", "gevent", "-b", "0.0.0.0:9000", "--timeout", "120", "edr.app:app"]

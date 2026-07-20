@@ -1,0 +1,39 @@
+# === 敏感文件 ===
+config/.env
+config/.env.backup
+
+# === 数据 ===
+data/
+*.db
+*.db.wal
+*.db.shm
+*.db.init.lock
+
+# === 日志 ===
+logs/
+!logs/.gitkeep
+
+# === 缓存 ===
+__pycache__/
+*.pyc
+*.pyo
+
+# === 备份 ===
+backups/
+reports/
+
+# === 开发环境 ===
+.soc-agent-env/
+tmp/
+.tox/
+.pytest_cache/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db

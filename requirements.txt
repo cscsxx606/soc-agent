@@ -1,0 +1,15 @@
+flask>=3.0
+flask-cors>=4.0
+flask-limiter>=4.0
+flask-wtf>=1.2
+pyjwt>=2.8
+bcrypt>=4.1
+requests>=2.31
+rich>=13.7
+pyyaml>=6.0
+gunicorn>=22.0
+gevent>=24.0
+crewai>=1.11,<1.12
+# litellm  # CrewAI 多模型支持（可选，安装后启用完整 CrewAI 引擎）
+# reportlab  # PDF report (optional, uncomment after pip install)
+# weasyprint  # PDF via HTML (optional)
