@@ -134,7 +134,7 @@ async function saveBranding() {
         footer_text: document.getElementById('b-footer').value
     };
     const res = await api('/api/admin/branding/update', {method:'POST', body:JSON.stringify(data)});
-    if (res && res.success) { toast('✓ 品牌配置已保存'); } else { toast('保存失败', 'error'); }
+    if (res && res.success) { toast('✓ 品牌配置已保存'); } else { showErrorDetail(res, '品牌配置'); }
 }
 
 // ===== 通知通道 =====
@@ -169,12 +169,12 @@ async function addChannel() {
     const res = await api('/api/admin/notifications/channel/create', {
         method:'POST', body:JSON.stringify({name, channel:type, config, enabled:1})
     });
-    if (res && res.success) { toast('✓ 通道已添加'); loadChannels(); } else { toast('添加失败', 'error'); }
+    if (res && res.success) { toast('✓ 通道已添加'); loadChannels(); } else { showErrorDetail(res, '通知通道'); }
 }
 
 async function testChannel(id) {
     const res = await api(`/api/admin/notifications/channel/test/${id}`, {method:'POST'});
-    if (res && res.success) { toast('✓ 测试消息已发送'); } else { toast('测试失败: ' + ((res && res.result && res.result.error) || ''), 'error'); }
+    if (res && res.success) { toast('✓ 测试消息已发送'); } else { showErrorDetail(res, '通知通道'); }
 }
 
 async function deleteChannel(id) {

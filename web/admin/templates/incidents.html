@@ -21,6 +21,8 @@
                 <option value="resolved">🟢 已解决</option>
                 <option value="closed">⚪ 已关闭</option>
             </select>
+            <input id="search-input" placeholder="搜索告警类型 / IP / 描述..." style="flex:1;min-width:200px;"
+                onkeydown="if(event.key==='Enter') loadIncidents()" value="">
             <input type="text" id="filter-search" placeholder="🔍 搜索事件ID/资产/IP..." style="width:220px;" onkeyup="if(event.key==='Enter')loadIncidents()">
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -96,7 +98,8 @@ async function loadIncidents() {
     showLoading('#incidents-tbody', 10);
     const priority = document.getElementById('filter-priority').value;
     const status = document.getElementById('filter-status').value;
-    const search = document.getElementById('filter-search').value;
+    let search = document.getElementById('search-input').value;
+    if (!search) search = document.getElementById('filter-search').value;
     
     try {
         const res = await api(`/api/admin/incidents/list?priority=${priority}&status=${status}&search=${encodeURIComponent(search)}`);
@@ -195,7 +198,7 @@ function viewIncident(id) {
     (async function() {
         const res = await api('/api/admin/incidents/' + id);
         if (!res || !res.success) {
-            toast('加载事件详情失败', 'error');
+            showErrorDetail('加载事件详情失败', '告警事件');
             return;
         }
         const alert = res.alert || {};
@@ -269,7 +272,7 @@ async function doRespondIncident(id) {
         toast('✓ 处置方案已生成');
         loadIncidents();
     } else {
-        toast('生成失败: ' + ((res && res.error) || ''), 'error');
+        showErrorDetail(res, '告警事件');
     }
 }
 
@@ -294,7 +297,7 @@ function exportIncidents() {
                 URL.revokeObjectURL(url);
                 toast('✓ 已导出 ' + res.count + ' 条事件');
             } else {
-                toast('导出失败', 'error');
+                showErrorDetail('导出失败', '告警事件');
             }
         });
         return;

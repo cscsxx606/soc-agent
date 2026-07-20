@@ -176,7 +176,7 @@ async function toggleUserStatus(id, active) {
         toast(active ? '用户已启用' : '用户已禁用');
         loadUsers();
     } else {
-        toast('操作失败', 'error');
+        showErrorDetail('操作失败', '用户管理');
     }
 }
 
@@ -229,7 +229,7 @@ async function submitUser() {
     
     const res = await api('/api/admin/users/create', {method: 'POST', body: JSON.stringify(data)});
     if (res.success) { toast('✓ 用户已创建'); closeModal(); loadUsers(); }
-    else toast('✗ ' + res.error, 'error');
+    else showErrorDetail(res, '用户管理');
 }
 
 function resetPassword(id, username) {
@@ -247,7 +247,7 @@ async function doResetPw(id) {
     if (password.length < 6) { toast('密码至少 6 位', 'error'); return; }
     const res = await api(`/api/admin/users/update/${id}`, {method: 'POST', body: JSON.stringify({password})});
     if (res.success) { toast('✓ 密码已重置'); closeModal(); }
-    else toast('重置失败', 'error');
+    else showErrorDetail('重置失败', '用户管理');
 }
 
 async function generateToken(id) {
@@ -263,7 +263,7 @@ async function generateToken(id) {
                 <button class="secondary" onclick="closeModal()">关闭</button>
             </div>
         `);
-    } else toast('生成失败', 'error');
+    } else showErrorDetail('生成失败', '用户管理');
 }
 
 async function deleteUser(id, username) {
@@ -271,8 +271,8 @@ async function deleteUser(id, username) {
     try {
         const res = await api(`/api/admin/users/delete/${id}`, {method: 'POST'});
         if (res && res.success) { toast('✓ 已删除'); loadUsers(); }
-        else toast('删除失败: ' + ((res && res.error) || '未知错误'), 'error');
-    } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+        else showErrorDetail(res, '用户管理');
+    } catch (e) { showErrorDetail(e, '用户管理'); }
 }
 
 // CSS 动画

@@ -223,14 +223,14 @@ async function saveAgent(name) {
     catch(e) { toast('JSON 格式错误: ' + e.message, 'error'); return; }
     const res = await api('/api/admin/agents/update/' + name, {method:'POST', body: JSON.stringify({config: cfg})});
     if (res && res.success) toast('✓ 已保存');
-    else toast('保存失败: ' + ((res && res.error) || '未知'), 'error');
+    else showErrorDetail(res, 'Agent 管理');
 }
 
 async function resetAgent(name) {
     if (!confirm('确认重置 ' + name + ' 为默认配置？')) return;
     const res = await api('/api/admin/agents/reset/' + name, {method:'POST'});
     if (res && res.success) { toast('✓ 已重置'); loadAgents(); }
-    else toast('重置失败', 'error');
+    else showErrorDetail('重置失败', 'Agent 管理');
 }
 
 async function testAgentRun(name) {
@@ -238,7 +238,7 @@ async function testAgentRun(name) {
     const res = await api('/api/admin/agents/stats/' + name);
     if (res && res.success) {
         toast(`Agent ${name} 运行正常（总调用 ${res.stats.executions||0} 次）`);
-    } else toast('测试失败', 'error');
+    } else showErrorDetail('测试失败', 'Agent 管理');
 }
 
 // ====== Agent 商店 ======
@@ -342,7 +342,7 @@ async function cloneTemplate(key) {
         toast('✓ 已克隆为 ' + newKey);
         loadStore();
         setTimeout(() => switchTab('create'), 1000);
-    } else toast('克隆失败: ' + ((res && res.error) || ''), 'error');
+    } else showErrorDetail(res, 'Agent 管理');
 }
 
 async function deleteAgent(key) {
@@ -351,7 +351,7 @@ async function deleteAgent(key) {
     if (res && res.success) {
         toast('已删除');
         loadStore();
-    } else toast('删除失败: ' + ((res && res.error) || ''), 'error');
+    } else showErrorDetail(res, 'Agent 管理');
 }
 
 function openTestModal(key) {
@@ -405,7 +405,7 @@ async function runAgentTest(key) {
 // ====== 创建 Agent ======
 async function loadTemplate(key) {
     const res = await api('/api/admin/agents/registry/' + key);
-    if (!res || !res.success) { toast('加载模板失败', 'error'); return; }
+    if (!res || !res.success) { showErrorDetail('加载模板失败', 'Agent 管理'); return; }
     const a = res.agent;
     document.getElementById('new-key').value = a.agent_key + '_custom';
     document.getElementById('new-name').value = a.name + ' (我的版本)';
@@ -466,7 +466,7 @@ async function createAgent() {
         toast('✓ 创建成功！');
         setTimeout(() => switchTab('store'), 800);
     } else {
-        toast('创建失败: ' + ((res && res.error) || '未知'), 'error');
+        showErrorDetail(res, 'Agent 管理');
     }
 }
 

@@ -205,7 +205,7 @@ async function addWhitelist() {
         document.getElementById('wl-ip').value = '';
         document.getElementById('wl-label').value = '';
         loadWhitelist();
-    } else toast('添加失败: ' + ((res && res.error) || ''), 'error');
+    } else showErrorDetail(res, '扫描中心');
 }
 
 async function checkAuth() {
@@ -308,7 +308,7 @@ async function loadTasks() {
 
 async function viewResult(taskId) {
     const res = await api(`/api/admin/scans/result/${taskId}`);
-    if (!res || !res.success) { toast('结果已过期（仅保留最近 100 条）', 'error'); return; }
+    if (!res || !res.success) { showErrorDetail('结果已过期（仅保留最近 100 条）', '扫描中心'); return; }
     showResult(res.result);
 }
 

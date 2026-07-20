@@ -1,0 +1,18 @@
+[Unit]
+Description=SOC Multi-Agent Admin Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/soc-agent
+Environment=SOC_ADMIN_FLASK_SECRET=your-secret-key-here-(at-least-32-hex)
+Environment=SOC_ADMIN_SECRET=your-admin-api-secret-(at-least-32-hex)
+ExecStart=/usr/local/bin/gunicorn -w 4 -k gevent -b 0.0.0.0:8889 --timeout 120 web.admin.app:app
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/soc-agent/logs/gunicorn.log
+StandardError=append:/opt/soc-agent/logs/gunicorn.error.log
+
+[Install]
+WantedBy=multi-user.target

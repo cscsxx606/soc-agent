@@ -277,10 +277,10 @@ async function createSchedule() {
             loadSchedules();
             loadStatus();
         } else {
-            toast('创建失败: ' + ((r && r.error) || ''), 'error');
+            showErrorDetail(r, '扫描调度');
         }
     } catch (e) {
-        toast('创建异常: ' + e.message, 'error');
+        showErrorDetail(e, '扫描调度');
     } finally {
         btn.disabled = false;
         btn.textContent = '🚀 创建调度';
@@ -297,7 +297,7 @@ async function toggleSchedule(id, enabled) {
             loadSchedules();
         }
     } catch (e) {
-        toast('操作失败', 'error');
+        showErrorDetail('操作失败', '扫描调度');
     }
 }
 
@@ -307,7 +307,7 @@ async function deleteSchedule(id) {
         const r = await api(`/api/admin/scheduler/delete/${id}`, {method:'POST'});
         if (r && r.success) { toast('✓ 已删除'); loadSchedules(); loadStatus(); }
     } catch (e) {
-        toast('删除失败', 'error');
+        showErrorDetail('删除失败', '扫描调度');
     }
 }
 
@@ -316,7 +316,7 @@ async function startScheduler() {
         const r = await api('/api/admin/scheduler/start', {method:'POST'});
         if (r && r.success) { toast('✓ 调度器已启动'); loadStatus(); }
     } catch (e) {
-        toast('启动失败', 'error');
+        showErrorDetail('启动失败', '扫描调度');
     }
 }
 

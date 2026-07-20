@@ -365,9 +365,30 @@ code { font-family: 'SF Mono', 'Fira Code', monospace; }
         <div class="modal" id="modal-content"></div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
     <script>
+    // ECharts 延迟加载（不阻塞首屏渲染）
+    let echarts = null;
+    function loadECharts() {
+        return new Promise(function(resolve) {
+            if (echarts) { resolve(echarts); return; }
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js';
+            s.onload = function() {
+                echarts = window.echarts;
+                // 延迟加载 ECharts 主题
+                document.querySelectorAll('[data-chart]').forEach(function(el) {
+                    if (el.getAttribute('data-chart-ready') === 'true') return;
+                    var chartFn = window['render_' + el.getAttribute('data-chart')];
+                    if (typeof chartFn === 'function') chartFn(el);
+                    el.setAttribute('data-chart-ready', 'true');
+                });
+                resolve(window.echarts);
+            };
+            document.head.appendChild(s);
+        });
+    }
+    
     // ========== XSS Protection: escapeHtml ==========
     function escapeHtml(str) {
         if (str === null || str === undefined) return '';
@@ -386,6 +407,20 @@ code { font-family: 'SF Mono', 'Fira Code', monospace; }
         type = type || 'success';
         toastQueue.push({msg, type});
         processToastQueue();
+    }
+    function showErrorDetail(err, context) {
+        var msg = '操作失败';
+        if (typeof err === 'string') msg = err;
+        else if (err && err.error) msg = err.error;
+        else if (err && err.message) msg = err.message;
+        else if (err && err.responseJSON && err.responseJSON.error) msg = err.responseJSON.error;
+        else if (err && err.status === 0) msg = '网络连接失败，请检查服务是否运行';
+        else if (err && err.status === 401) msg = '会话已过期，请重新登录';
+        else if (err && err.status === 403) msg = '权限不足';
+        else if (err && err.status === 429) msg = '操作太频繁，请稍后再试';
+        else if (err && err.status === 503) msg = '服务暂时不可用';
+        console.error(context + ':', err);
+        toast(msg, 'error');
     }
     function processToastQueue() {
         if (toastShowing || toastQueue.length === 0) return;

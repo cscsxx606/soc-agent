@@ -26,6 +26,8 @@
 <div class="panel" style="padding:16px 20px;">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <input id="search-input" placeholder="搜索用户/动作/详情/对象..." style="flex:1;min-width:200px;"
+                onkeydown="if(event.key==='Enter')loadLogs()" value="">
             <input type="text" id="f-username" placeholder="👤 用户名" style="width:140px;">
             <select id="f-module" style="width:140px;">
                 <option value="">📦 所有模块</option>
@@ -93,7 +95,8 @@ async function loadLogs() {
     const module = document.getElementById('f-module').value;
     const result = document.getElementById('f-result').value;
     const date = document.getElementById('f-date').value;
-    const params = new URLSearchParams({username, module, result, date, limit: 500});
+    const search = document.getElementById('search-input').value;
+    const params = new URLSearchParams({username, module, result, date, limit: 500, search});
 
     try {
         const res = await api('/api/admin/audit/list?' + params);
@@ -193,7 +196,7 @@ async function exportLogs() {
         URL.revokeObjectURL(url);
         toast('✓ 已导出审计日志', 'success');
     } else {
-        toast('导出失败: HTTP ' + res.status, 'error');
+        showErrorDetail({status: res.status}, '审计日志');
     }
 }
 

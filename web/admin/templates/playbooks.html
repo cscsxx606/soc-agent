@@ -262,7 +262,7 @@ async function saveVisualPlaybook() {
         toast('✓ Playbook 创建成功');
         closeModal();
         loadPlaybooks();
-    } else toast('✗ ' + res.error, 'error');
+    } else showErrorDetail(res, 'Playbook');
 }
 
 async function previewYaml() {
@@ -320,7 +320,7 @@ async function deletePlaybook(id) {
 }
 
 async function editPlaybook(id) {
-    toast('编辑功能：使用"YAML 编辑器"或"可视化创建"', 'error');
+    showErrorDetail('编辑功能：使用"YAML 编辑器"或"可视化创建"', 'Playbook');
 }
 
 init();

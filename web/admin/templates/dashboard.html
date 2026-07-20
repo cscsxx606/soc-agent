@@ -135,7 +135,7 @@ async function loadDashboardCharts(silent) {
             if (!silent) {
                 btn.disabled = false;
                 btn.textContent = '🔄 刷新';
-                toast('数据加载失败', 'error');
+                showErrorDetail('数据加载失败', '仪表盘');
             }
             return;
         }
@@ -172,7 +172,7 @@ async function loadDashboardCharts(silent) {
         if (!silent) {
             btn.disabled = false;
             btn.textContent = '🔄 刷新';
-            toast('加载失败: ' + e.message, 'error');
+            showErrorDetail(e, '仪表盘');
         }
         console.error('loadDashboardCharts', e);
     }
@@ -195,7 +195,11 @@ function getChart(elId) {
         try { charts[elId].resize(); } catch(e) {}
         return charts[elId];
     }
-    charts[elId] = echarts.init(document.getElementById(elId));
+    // 使用 ECharts 延迟加载
+    var el = document.getElementById(elId);
+    if (typeof echarts !== 'undefined' && echarts) {
+        charts[elId] = echarts.init(el);
+    }
     return charts[elId];
 }
 
@@ -421,7 +425,9 @@ window.addEventListener('resize', function() {
 });
 
 // ===== 启动 =====
-loadDashboardCharts();
+loadECharts().then(function() {
+    loadDashboardCharts();
+});
 startAutoRefresh();
 </script>
 {% endblock %}

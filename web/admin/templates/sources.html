@@ -252,7 +252,7 @@ async function submitSource() {
         closeModal();
         loadSources();
     } else {
-        toast('✗ ' + res.error, 'error');
+        showErrorDetail(res, '数据源管理');
     }
 }
 
@@ -276,7 +276,7 @@ async function testSourceConfig() {
     if (res.success) {
         toast('✓ ' + (res.message || '连接成功'));
     } else {
-        toast('✗ ' + (res.error || '连接失败'), 'error');
+        showErrorDetail(res, '数据源管理');
     }
 }
 
@@ -287,7 +287,7 @@ async function testSource(id) {
         body: JSON.stringify({id})
     });
     if (res.success) toast('✓ ' + (res.message||'连接成功'));
-    else toast('✗ ' + (res.error||'失败'), 'error');
+    else showErrorDetail(res, '数据源管理');
 }
 
 async function syncSource(id) {
@@ -296,7 +296,7 @@ async function syncSource(id) {
     if (res.success) {
         toast('✓ ' + res.message);
         loadSources();
-    } else toast('✗ ' + res.error, 'error');
+    } else showErrorDetail(res, '数据源管理');
 }
 
 async function editSource(id) {
@@ -359,7 +359,7 @@ async function saveEditSource(id) {
         closeModal();
         loadSources();
     } else {
-        toast('更新失败', 'error');
+        showErrorDetail('更新失败', '数据源管理');
     }
 }
 

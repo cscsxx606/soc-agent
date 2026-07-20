@@ -42,6 +42,10 @@ def register(app):
         if result_filter:
             conditions.append("result = ?")
             params.append(result_filter)
+        search = request.args.get('search', '')
+        if search:
+            conditions.append("(username LIKE ? OR action LIKE ? OR module LIKE ? OR target LIKE ? OR details LIKE ?)")
+            params.extend([f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%'])
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 

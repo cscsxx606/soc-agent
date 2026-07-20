@@ -36,6 +36,10 @@ def register(app):
         if status:
             conditions.append("status = ?")
             params.append(status)
+        search = request.args.get('search', '')
+        if search:
+            conditions.append("(alert_type LIKE ? OR source_ip LIKE ? OR hostname LIKE ? OR description LIKE ?)")
+            params.extend([f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%'])
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 

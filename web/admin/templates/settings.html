@@ -127,7 +127,7 @@ async function updateSetting(key, value) {
     if (res && res.success) {
         toast('&#9989; ' + key + ' 已保存');
     } else {
-        toast('&#10060; 保存失败: ' + (res && res.error || ''), 'error');
+        showErrorDetail(res, '系统设置');
     }
 }
 
@@ -144,7 +144,7 @@ async function saveEncrypted(key) {
     if (!value) { toast('请输入密钥值', 'error'); return; }
     const res = await api('/api/admin/settings/update', {method: 'POST', body: JSON.stringify({key, value})});
     if (res && res.success) { toast('&#9989; 已加密保存'); closeModal(); loadSettings(); }
-    else toast('保存失败', 'error');
+    else showErrorDetail('保存失败', '系统设置');
 }
 
 function scrollToCategory(cat) {
