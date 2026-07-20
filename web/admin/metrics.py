@@ -85,14 +85,14 @@ def normalize_endpoint(endpoint: str) -> str:
 
 def before_request_hook():
     """每个请求开始时调用"""
+    from flask import g
     IN_FLIGHT.inc()
-    from flask import request, g
     g._start_time = time.time()
 
 
 def after_request_hook(response):
     """每个请求结束时调用 (Flask after_request)"""
-    from flask import request
+    from flask import request, g
     IN_FLIGHT.dec()
 
     # 抓指标
@@ -102,9 +102,10 @@ def after_request_hook(response):
 
     REQUEST_COUNT.labels(method=method, endpoint=endpoint, status=status).inc()
 
-    if hasattr(g := request.environ.get('werkzeug.request'), '_start_time'):
-        elapsed = time.time() - request.environ['_start_time']
-        REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(elapsed)
+    # 从 flask.g (与 before_request 配对) 读 start_time
+    start = getattr(g, '_start_time', None)
+    if start is not None:
+        REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(time.time() - start)
 
     return response
 
