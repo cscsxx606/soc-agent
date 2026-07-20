@@ -25,30 +25,12 @@ from agents.response_agent import ResponseAgent
 from agents.vuln_agent import VulnAssessmentAgent
 
 # === Layer 2: Security for AI ===
-try:
-    from core.guard import PromptGuard, GuardVerdict
-except ImportError:
-    PromptGuard = None
-    GuardVerdict = None
-
-try:
-    from core.tool_acl import ToolACL, check_permission
-except ImportError:
-    ToolACL = None
-    check_permission = None
-
-try:
-    from core.model_acl import ModelACL, QuotaExceeded
-except ImportError:
-    ModelACL = None
-    QuotaExceeded = None
+from core.guard import PromptGuard, GuardVerdict, RiskLevel, GuardAction
+from core.tool_acl import ToolACL, check_permission, require_permission, PermissionDenied
+from core.model_acl import ModelACL, QuotaExceeded, MODEL_PRICING, AGENT_QUOTAS
 
 # === Layer 3: Ops & Trust ===
-try:
-    from core.explainability import DecisionExplainer, Explanation
-except ImportError:
-    DecisionExplainer = None
-    Explanation = None
+from core.explainability import DecisionExplainer, Explanation, Evidence
 
 try:
     from core.audit_chain import AuditChain
@@ -63,11 +45,11 @@ __all__ = [
     "ThreatHuntingAgent",
     "ResponseAgent",
     "VulnAssessmentAgent",
-    # Layer 2
-    "PromptGuard", "GuardVerdict",
-    "ToolACL", "check_permission",
-    "ModelACL", "QuotaExceeded",
+    # Layer 2 - 核心护城河
+    "PromptGuard", "GuardVerdict", "RiskLevel", "GuardAction",
+    "ToolACL", "check_permission", "require_permission", "PermissionDenied",
+    "ModelACL", "QuotaExceeded", "MODEL_PRICING", "AGENT_QUOTAS",
     # Layer 3
-    "DecisionExplainer", "Explanation",
+    "DecisionExplainer", "Explanation", "Evidence",
     "AuditChain",
 ]
