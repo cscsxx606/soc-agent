@@ -82,7 +82,7 @@ class ThreatHuntingAgent(BaseAgent):
         user_prompt = self._build_hunt_prompt(triaged_alert)
 
         # AI 狩猎分析
-        hunt_result = self.llm.analyze_json(self.hunt_prompt, user_prompt)
+        hunt_result = self.safe_llm_call(self.hunt_prompt, user_prompt)
 
         if hunt_result:
             self.log(f"  ✓ 威胁狩猎完成，发现 {len(hunt_result.get('findings', []))} 个线索")

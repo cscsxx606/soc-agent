@@ -87,7 +87,7 @@ class ResponseAgent(BaseAgent):
 
         # AI 生成响应方案
         user_prompt = self._build_response_prompt(triaged_alert, hunt_result)
-        response_plan = self.llm.analyze_json(self.response_prompt, user_prompt)
+        response_plan = self.safe_llm_call(self.response_prompt, user_prompt)
 
         if response_plan:
             self.log(f"  ✓ 响应方案生成完成，包含 {len(response_plan.get('playbook_actions', []))} 个处置动作")

@@ -448,6 +448,9 @@ def register_apis():
     scheduler.register(app)
     notifications.register(app)
     pipelines.register(app)
+    # Phase 6: Copilot + 决策解释
+    from api import copilot
+    copilot.register(app)
     # Prometheus 指标（不需要鉴权）
     from metrics import register as metrics_register
     metrics_register(app)

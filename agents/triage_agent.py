@@ -168,15 +168,20 @@ class AlertTriageAgent(BaseAgent):
             # Step 1: 丰富化
             enriched = self._enrich_alert(alert)
 
-            # Step 2: AI 分析
+            # Step 2: AI 分析 - 过三层护栏 (PromptGuard + ModelACL)
             user_prompt = self._format_alert_for_analysis(enriched)
-            analysis = self.llm.analyze_json(self.system_prompt, user_prompt)
+            analysis = self.safe_llm_call(
+                self.system_prompt,
+                user_prompt,
+                model='deepseek-chat',
+                estimated_tokens=len(user_prompt + self.system_prompt) // 4,
+            )
 
             if analysis:
                 self.log(f"  ✓ AI 分析完成，风险评分: {analysis.get('risk_score', 'N/A')}")
                 self.update_stats(success=True)
             else:
-                self.log(f"  ⚠ AI 分析失败，使用规则引擎")
+                self.log(f"  ⚠ AI 分析失败 / 被护栏拦截，使用规则引擎")
                 analysis = self._rule_fallback(enriched)
                 self.update_stats(success=False)
 

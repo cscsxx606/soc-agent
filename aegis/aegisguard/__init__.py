@@ -32,10 +32,8 @@ from core.model_acl import ModelACL, QuotaExceeded, MODEL_PRICING, AGENT_QUOTAS
 # === Layer 3: Ops & Trust ===
 from core.explainability import DecisionExplainer, Explanation, Evidence
 
-try:
-    from core.audit_chain import AuditChain
-except ImportError:
-    AuditChain = None
+from core.audit_chain import AuditChain
+from core.soc_copilot import SOCCopilot, CopilotSuggestion
 
 # === Metadata ===
 __version__ = "1.0.0"
@@ -52,4 +50,6 @@ __all__ = [
     # Layer 3
     "DecisionExplainer", "Explanation", "Evidence",
     "AuditChain",
+    # Layer 1 扩展
+    "SOCCopilot", "CopilotSuggestion",
 ]

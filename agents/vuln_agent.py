@@ -125,7 +125,7 @@ CVSS 基础评分: {vuln.get('cvss_score', 'N/A')}
 
 请评估实际风险并给出修复建议。"""
 
-        result = self.llm.analyze_json(self.vuln_prompt, user_prompt)
+        result = self.safe_llm_call(self.vuln_prompt, user_prompt)
 
         if result:
             self.update_stats(success=True)

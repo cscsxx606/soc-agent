@@ -278,5 +278,37 @@ API_SPEC = {
         "summary": "租户列表",
         "description": "列出所有租户（多租户管理）",
         "auth": "role: admin"
+    },
+
+    # ====== Phase 6: Copilot（公开） ======
+
+    "/api/copilot/suggest": {
+        "method": "GET",
+        "category": "🤖 Copilot",
+        "summary": "下一步操作推荐",
+        "description": "根据最新 Incident 推荐 SOC 分析师下一步操作",
+        "auth": "auth required",
+        "params": ["incident_id (optional)"]
+    },
+    "/api/copilot/explain/<id>": {
+        "method": "GET",
+        "category": "🤖 Copilot",
+        "summary": "AI 决策解释",
+        "description": "解释某条 Incident 的 AI 分流决策",
+        "auth": "auth required"
+    },
+    "/api/copilot/report/<id>": {
+        "method": "GET",
+        "category": "🤖 Copilot",
+        "summary": "事件报告初稿",
+        "description": "自动生成 Incident 调查事件报告初稿",
+        "auth": "auth required"
+    },
+    "/api/copilot/trend": {
+        "method": "GET",
+        "category": "🤖 Copilot",
+        "summary": "告警趋势分析",
+        "description": "最近 100 条告警的趋势分析（P1 突增检测等）",
+        "auth": "auth required"
     }
 }
