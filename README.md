@@ -1,202 +1,196 @@
-# SOC Multi-Agent System
+# AegisGuard · AI SOC Operations Platform
 
-基于 **DeepSeek V4 Flash** 的网络安全运营多智能体系统，自动化完成告警从接收到处置的全流程。
+> **让企业放心用 AI 做安全。**
+> 全球首个面向 AI SOC Agent 的合规与安全护栏，让 LLM 驱动的安全运营既高效又可信。
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-110%20passing-brightgreen.svg)](tests/)
+[![Code](https://img.shields.io/badge/code-12K%20lines-blue.svg)](core/)
+[![Security](https://img.shields.io/badge/AI--Safe-Layer--2-red.svg)](aegis/sec_for_ai/)
+
+[English](README.en.md) | [中文](README.md) | [日本語](README.ja.md)
 
 ---
 
-## 🎯 4 个 Agent 阶段
+## 🎯 我们的使命
 
-| 阶段 | Agent | 功能 |
-|------|-------|------|
-| Phase 1 | **TriageAgent** 告警智能分流 | 风险评分 + 自动分类 + 优先级排序 |
-| Phase 2 | **HuntingAgent** 主动威胁狩猎 | 攻击链还原 + SIEM/EDR 查询语句生成 |
-| Phase 3 | **ResponseAgent** 应急响应处置 | 自动化遏制 + 证据保全 + playbook |
-| Phase 4 | **VulnAgent** 漏洞智能评估 | CVSS 调整 + 修复优先级 + 修复建议 |
+传统 SOC 平台 (Splunk / Elastic / Sentinel) 是「用规则做安全」。
+下一代 SOC 是「用 AI 做安全」。
+
+**但 AI 做安全会出问题**：
+
+| 风险 | 后果 |
+|---|---|
+| 🚨 Prompt 注入 | 攻击者通过告警内容劫持 LLM，让 SOC 做出错误决策 |
+| 🔓 Tool 滥用 | AI Agent 误删数据库 / 暴露用户 / 误封 IP |
+| 💸 模型跑飞账单 | 一个 agent 异常调用导致 $10K 月账单 |
+| 📉 决策黑盒 | AI 决策没有可解释证据，GDPR / SOC 2 不合规 |
+| 🤖 Agent 越权 | Triage Agent 居然能改用户表 |
+
+**AegisGuard 解决这 5 个问题**。
+
+---
+
+## 🏛️ 三层架构
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                       AegisGuard Platform                          │
+│                                                                    │
+│  ┌────────────────────┬────────────────────┬────────────────────┐  │
+│  │  LAYER 1           │  LAYER 2           │  LAYER 3           │  │
+│  │  AI for Security   │  Security for AI   │  Ops & Trust       │  │
+│  │  (用 AI 做事)       │  (护 AI 不出事)     │  (合规可信)        │  │
+│  ├────────────────────┼────────────────────┼────────────────────┤  │
+│  │ ✅ Triage Agent   │ 🆕 PromptGuard    │ 🆕 Explainable AI │  │
+│  │ ✅ Hunting Agent   │ 🆕 Tool ACL       │ 🆕 Audit Chain    │  │
+│  │ ✅ Response Agent  │ 🆕 Model Quota    │ 🆕 Compliance     │  │
+│  │ ✅ Vuln Agent      │ 🆕 RAG Firewall   │ 🆕 SOC Copilot    │  │
+│  │ 🆕 SOC Copilot    │ 🆕 Agent Monitor  │    Reports         │  │
+│  └────────────────────┴────────────────────┴────────────────────┘  │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🧱 核心模块
+
+### Layer 1 · AI for Security
+
+| 模块 | 说明 | 状态 |
+|---|---|---|
+| `agents/triage_agent.py` | Phase 1: 告警智能分流 + 风险评分 | ✅ Done |
+| `agents/hunting_agent.py` | Phase 2: 威胁狩猎 + MITRE 映射 | ✅ Done |
+| `agents/response_agent.py` | Phase 3: 应急响应 + 自动化遏制 | ✅ Done |
+| `agents/vuln_agent.py` | Phase 4: 漏洞评估 + 修复优先级 | ✅ Done |
+| `core/soc_copilot.py` | SOC 分析师实时 AI 助手 | 🆕 Next |
+
+### Layer 2 · Security for AI ⭐ 差异化护城河
+
+| 模块 | 说明 | 状态 |
+|---|---|---|
+| `core/guard.py` | **Prompt 注入防护层** | 🆕 Next |
+| `core/tool_acl.py` | **Agent 工具调用 RBAC** | 🆕 Next |
+| `core/model_acl.py` | **模型调用配额 (防爆账单)** | 🆕 Next |
+| `core/rag_firewall.py` | **RAG 数据泄露防护** | 🆕 Next |
+| `core/agent_monitor.py` | **Agent 行为异常检测 (UEBA for AI)** | 🆕 Next |
+
+### Layer 3 · Ops & Trust
+
+| 模块 | 说明 | 状态 |
+|---|---|---|
+| `core/explainability.py` | **AI 决策可解释 (XAI)** | 🆕 Next |
+| `core/audit_chain.py` | **Hash 链式审计 (不可篡改)** | 🆕 Next |
+| `web/admin/api/decision_explain.py` | 决策解释 API | 🆕 Next |
+| `web/admin/api/compliance.py` | 合规报告导出 | 🆕 Next |
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 命令行模式（推荐用于测试）
+### 安装
 
 ```bash
-cd ~/.openclaw/workspace/soc-agent
-source ../soc-agent-env/bin/activate
+# 1. 克隆
+git clone https://github.com/cscsxx606/aegisguard.git
+cd aegisguard
 
-# 运行完整流水线
-python3 start.py full
+# 2. 创建虚拟环境
+python3.11 -m venv .venv
+source .venv/bin/activate
 
-# 仅运行告警分流
-python3 start.py cli --phase triage
+# 3. 安装依赖
+pip install -r requirements.txt
 
-# 仅运行漏洞评估
-python3 start.py cli --phase vuln
+# 4. 配置
+cp config/.env.example config/.env
+# 编辑 .env 填入 API keys
+
+# 5. 启动
+make web       # Admin Web  http://localhost:8889
+make edr       # EDR 探针  http://localhost:9000
+make test      # 跑测试 (110 个用例)
 ```
 
-### 2. Web 控制台模式（推荐用于演示）
+### 第一次使用
+
+```python
+from aegis.sec_for_ai.guard import PromptGuard
+from aegis.ai_for_sec.agents.triage_agent import AlertTriageAgent
+
+# 1. 用 PromptGuard 包装用户输入
+guard = PromptGuard()
+safe_input = guard.sanitize(user_input)
+
+# 2. 跑 AI Agent（自动 ACL + 配额）
+triage = AlertTriageAgent()
+results = triage.execute([alert])
+
+# 3. 解释 AI 决策（合规审计）
+from aegis.ops_trust.explainability import DecisionExplainer
+explainer = DecisionExplainer()
+explanation = explainer.explain_incident_triage(results[0]['id'])
+```
+
+---
+
+## 📊 项目数据
+
+| 指标 | 数值 |
+|---|---|
+| 代码行数 | 12,457 |
+| 测试用例 | 110 ✅ |
+| API 端点 | 96 |
+| Agent | 4 (Triage/Hunting/Response/Vuln) |
+| Core 模块 | 12+ |
+| 文档 | OPERATIONS + ARCHITECTURE + 三语 README |
+
+---
+
+## 🤝 参与贡献
+
+欢迎 PR 和 Issue！
 
 ```bash
-cd ~/.openclaw/workspace/soc-agent
-source ../soc-agent-env/bin/activate
-python3 start.py web --port 8888
+# 跑测试
+make test
 
-# 浏览器访问 http://localhost:8888
-```
+# 跑 lint（待加）
+make lint
 
-Web 控制台功能：
-- 📊 实时统计面板
-- 📋 告警列表（自动刷新）
-- 🔍 一键威胁狩猎
-- 🚨 一键应急响应
-- 🛡️ 漏洞扫描评估
-- 📝 实时执行日志
-
----
-
-## 📁 项目结构
-
-```
-soc-agent/
-├── config/
-│   └── .env                    # DeepSeek API 配置
-├── core/
-│   ├── llm_client.py           # DeepSeek V4 Flash 客户端
-│   └── agent_base.py           # Agent 基类
-├── agents/
-│   ├── triage_agent.py         # 告警分流 Agent
-│   ├── hunting_agent.py        # 威胁狩猎 Agent
-│   ├── response_agent.py       # 应急响应 Agent
-│   └── vuln_agent.py           # 漏洞评估 Agent
-├── playbooks/
-│   ├── brute_force.yml         # SSH 暴力破解预案
-│   ├── sql_injection.yml       # SQL 注入预案
-│   └── privilege_escalation.yml # 权限提升预案
-├── web/
-│   └── app.py                  # Flask Web 控制台
-├── data/
-│   └── sample_alerts.json      # 示例告警
-├── orchestrator.py             # 多 Agent 编排器
-├── main.py                     # CLI 入口
-├── requirements.txt          # 依赖清单（含 gunicorn, gevent, crewai）
-├── Dockerfile                # 容器构建文件
-├── docker-compose.yml        # 一键部署（SOC后台 + EDR探针）
-├── start.py                  # 本地启动脚本
-├── edr/
-│   ├── app.py                # Osquery EDR 探针管理服务（端口9000）
-│   ├── enroll_secret          # 探针注册密钥
-│   └── DEPLOY.md             # EDR 探针部署指南
-├── SKILL.md                    # OpenClaw 技能描述
-└── README.md                   # 本文件
+# 查看 Roadmap
+cat ROADMAP.md
 ```
 
 ---
 
-## 🔌 API 接口
+## 📜 许可证
 
-### 文档
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET  | `/` | Web 控制台 (Admin) |
-| GET  | `/api/docs` | **Swagger UI 风格的 API 文档页**（匿名可访） |
-| GET  | `/api/version` | API 版本信息 |
-| GET  | `/health` | 健康检查 |
-
-### 告警流转 (Pipeline)
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/demo` | 加载演示告警 |
-| POST | `/api/alerts/triage` | 告警分流 (Phase 1) |
-| POST | `/api/hunt` | 威胁狩猎 (Phase 2) |
-| POST | `/api/respond` | 应急响应 (Phase 3) |
-| POST | `/api/vuln/scan` | 漏洞评估 (Phase 4) |
-| POST | `/api/pipeline/full` | 完整流水线 |
-
-### 管理后台 (Admin)
-
-所有 `/api/admin/*` 接口需要登录 session 或 JWT。完整列表访问 `/api/docs` 查看（点开后会自动列出）。
-
-主要分类：
-- ⚙️ 系统：health / version
-- 🔐 认证：login / logout
-- 📊 仪表盘：stats / charts
-- 📁 数据源：sources
-- 🛡️ 平台/Agent 管理：agents
-- 🚨 事件：incidents (含 search filter)
-- 📋 Playbook：playbooks
-- 👥 用户：users
-- ✅ 审计：audit
-- 🌐 多租户：tenants
-- 🔔 通知：notifications
-- 🎨 Branding：branding
-
-### API 调用示例
-
-```bash
-# 加载演示数据
-curl -X POST http://localhost:8888/api/demo
-
-# 查看统计
-curl http://localhost:8888/api/stats
-
-# 漏洞评估
-curl -X POST http://localhost:8888/api/vuln/scan
-```
+[MIT](LICENSE) - 商业 / 私人 / 学术免费使用
 
 ---
 
-## 📊 已验证的真实运行结果
+## 🛣️ 路线图
 
-```
-Phase 1: 告警分流
-✓ ALERT-2026-001: SSH暴力破解 → server-01 → 85分 → P1
-✓ ALERT-2026-002: C2通信 → workstation-03 → 75分 → P2
-✓ ALERT-2026-003: 异常DNS查询 → db-server-02 → 65分 → P2
-✓ ALERT-2026-004: SQL Injection → web-server-prod → 95分 → P1
-✓ ALERT-2026-005: 权限提升 → app-server-03 → 75分 → P2
-
-Phase 2: 威胁狩猎
-✓ 3 个高危告警全部完成狩猎，发现 10+ 攻击链线索
-
-Phase 3: 应急响应
-✓ 3 个高危告警生成完整响应方案，含 9 个处置动作
-
-Phase 4: 漏洞评估
-✓ 5 个真实漏洞分析：CVE-2024-21762 (Fortinet, P1) / CVE-2024-3400 (PAN-OS, P1)
-```
+- [x] Phase 1: AI Agent 基础（Triage/Hunting/Response/Vuln）
+- [x] Phase 2: 工程化（Makefile/.env.example/服务加固）
+- [x] Phase 3: 可观测性（Prometheus + 系统监控）
+- [x] Phase 4: 文档化（OPERATIONS + ARCHITECTURE）
+- [ ] **Phase 5 (现在)**: Layer 2 安全护栏（PromptGuard/ToolACL/ModelQuota）
+- [ ] Phase 6: SOC Copilot UI + 决策可解释
+- [ ] Phase 7: 私有化部署 Helm Chart
+- [ ] Phase 8: ISO 27001 / SOC 2 合规认证
 
 ---
 
-## ⚙️ 配置说明
+## 📞 联系我们
 
-`config/.env`:
-```bash
-API_KEY=your-deepseek-api-key
-BASE_URL=https://api.siliconflow.cn/v1
-MODEL=deepseek-ai/DeepSeek-V3
-
-ENABLE_AUTO_RESPONSE=false  # 自动处置开关（默认关闭）
-```
+- 📧 Email: hello@aegisguard.ai
+- 🐦 Twitter: [@aegisguard](https://twitter.com/aegisguard)
+- 💬 Discord: [discord.gg/aegisguard](https://discord.gg/aegisguard)
+- 🌐 官网: https://aegisguard.ai
 
 ---
 
-## 🔄 下一步可扩展方向
-
-1. **对接真实数据源**：Splunk API、ELK、Wazuh、阿里云日志服务
-2. **真实 API 集成**：EDR（青藤/亚信）、防火墙（深信服/天融信）
-3. **多租户支持**：按团队/客户隔离告警
-4. **强化学习优化**：基于人工反馈调整风险评分模型
-5. **威胁情报集成**：微步在线、VirusTotal、AlienVault OTX
-
----
-
-## 📚 文档
-
-- 📖 [docs/OPERATIONS.md](docs/OPERATIONS.md) — 运维手册（部署/备份/升级/排错 SOP）
-- 🏗️ [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 系统架构、模块划分、数据流
-- 📌 [SKILL.md](SKILL.md) — OpenClaw 技能描述 (对本项目使用场景)
-
-## 📄 License
-
-MIT License
+_版本: v1.0 · 2026-07-20 · 第一次品牌化发布_
