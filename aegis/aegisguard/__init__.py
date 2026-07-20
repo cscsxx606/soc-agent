@@ -34,6 +34,8 @@ from core.explainability import DecisionExplainer, Explanation, Evidence
 
 from core.audit_chain import AuditChain
 from core.soc_copilot import SOCCopilot, CopilotSuggestion
+from core.rag_firewall import RAGFirewall
+from core.agent_monitor import AgentMonitor, AnomalyAlert, AnomalyType, Severity as MonitorSeverity
 
 # === Metadata ===
 __version__ = "1.0.0"
@@ -52,4 +54,7 @@ __all__ = [
     "AuditChain",
     # Layer 1 扩展
     "SOCCopilot", "CopilotSuggestion",
+    # Layer 2 剩余
+    "RAGFirewall",
+    "AgentMonitor", "AnomalyAlert", "AnomalyType", "MonitorSeverity",
 ]
