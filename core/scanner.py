@@ -287,12 +287,11 @@ class AssetScanner:
 
     def _detect_tools(self) -> Dict[str, bool]:
         """检测可用工具（为预留下个阶段用）"""
+        import shutil
         tools = {'nmap': False, 'nuclei': False, 'sqlmap': False}
         for tool in tools:
             try:
-                import subprocess
-                r = subprocess.run(['which', tool], capture_output=True, timeout=2)
-                if r.returncode == 0:
+                if shutil.which(tool):
                     tools[tool] = True
             except Exception:
                 pass

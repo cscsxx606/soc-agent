@@ -34,7 +34,7 @@ def register(app):
                 v = d.get(k)
                 if isinstance(v, str):
                     try: d[k] = json.loads(v)
-                    except: d[k] = {} if k == 'config_json' else []
+                    except (json.JSONDecodeError, TypeError): d[k] = {} if k == 'config_json' else []
             agents.append(d)
         return jsonify({'success': True, 'agents': agents, 'total': len(agents)})
 
@@ -53,7 +53,7 @@ def register(app):
             v = d.get(k)
             if isinstance(v, str):
                 try: d[k] = json.loads(v)
-                except: d[k] = {} if k == 'config_json' else []
+                except (json.JSONDecodeError, TypeError): d[k] = {} if k == 'config_json' else []
         return jsonify({'success': True, 'agent': d})
 
     @app.route('/api/admin/agents/registry/create', methods=['POST'])

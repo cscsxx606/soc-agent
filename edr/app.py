@@ -31,9 +31,12 @@ QUERY_RESULTS_FILE = DATA_DIR / 'query_results.json'
 ENROLL_SECRET = os.environ.get('EDR_ENROLL_SECRET')
 if not ENROLL_SECRET:
     import secrets as _secrets
+    import logging as _logging
     ENROLL_SECRET = _secrets.token_hex(32)
-    print(f"[WARNING] EDR_ENROLL_SECRET not set. Using auto-generated secret.")
-    print(f"[WARNING] For production, set: export EDR_ENROLL_SECRET=$(openssl rand -hex 32)")
+    _logging.getLogger(__name__).warning(
+        "EDR_ENROLL_SECRET not set. Using auto-generated secret. "
+        "For production, set: export EDR_ENROLL_SECRET=$(openssl rand -hex 32)"
+    )
 
 
 def _load_json(path):
@@ -209,8 +212,11 @@ def health():
 
 
 if __name__ == '__main__':
+    import logging
     port = int(os.environ.get('EDR_PORT', 9000))
-    print(f"EDR 探针管理服务启动: http://0.0.0.0:{port}")
-    print(f"  Osquery 注册地址: http://0.0.0.0:{port}/api/v1/enroll")
-    print(f"  Osquery 日志地址: http://0.0.0.0:{port}/api/v1/log")
+    logging.getLogger(__name__).info(
+        f"EDR 探针管理服务启动: http://0.0.0.0:{port}\n"
+        f"  Osquery 注册地址: http://0.0.0.0:{port}/api/v1/enroll\n"
+        f"  Osquery 日志地址: http://0.0.0.0:{port}/api/v1/log"
+    )
     app.run(host='0.0.0.0', port=port, debug=False)

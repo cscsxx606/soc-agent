@@ -81,7 +81,7 @@ def ensure_env():
 def load_pids():
     if PID_FILE.exists():
         try: return json.loads(PID_FILE.read_text())
-        except: pass
+        except (json.JSONDecodeError, OSError): pass
     return {}
 
 

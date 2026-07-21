@@ -53,8 +53,11 @@ if not _secret:
             shutil.move(_tmp, _secret_file)
         except (FileNotFoundError, IOError, OSError):
             pass
-        print(f"[WARNING] SOC_ADMIN_FLASK_SECRET not set. Using generated secret (session persists across workers).")
-        print(f"[WARNING] For production, set: export SOC_ADMIN_FLASK_SECRET=*** rand -hex 32)")
+        import logging
+        logging.getLogger(__name__).warning(
+            "SOC_ADMIN_FLASK_SECRET not set. Using generated secret (session persists across workers). "
+            "For production, set: export SOC_ADMIN_FLASK_SECRET=$(openssl rand -hex 32)"
+        )
 app.secret_key = _secret
 
 app.permanent_session_lifetime = 3600 * 8
@@ -485,7 +488,8 @@ def api_version():
 
 
 def run_server(host='0.0.0.0', port=8889, debug=False):
-    print(f"""
+    import logging
+    logging.getLogger(__name__).info(f"""
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║          AegisGuard 控制台  (Gunicorn + WAL 模式)                        ║
 ║                                                                            ║

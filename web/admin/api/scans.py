@@ -232,7 +232,8 @@ def register(app):
                             }
                         })
             except Exception as notif_err:
-                print(f'通知发送失败: {notif_err}')
+                import logging
+                logging.getLogger(__name__).error(f'通知发送失败: {notif_err}')
 
             return jsonify({
                 'success': True,

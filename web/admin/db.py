@@ -732,7 +732,8 @@ def _do_init():
 
     conn.commit()
     conn.close()
-    print(f"✓ 数据库初始化完成: {DB_PATH}")
+    import logging
+    logging.getLogger(__name__).info(f"✓ 数据库初始化完成: {DB_PATH}")
 
 
 if __name__ == '__main__':

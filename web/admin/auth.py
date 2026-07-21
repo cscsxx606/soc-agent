@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """认证模块 - JWT + bcrypt + 多租户支持"""
 
-import os, sys, jwt, bcrypt
-from datetime import datetime, timedelta
+import os, sys, jwt, bcrypt, logging
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import request, jsonify, session
 
@@ -22,7 +22,9 @@ if not JWT_SECRET:
         import secrets as _secrets
         JWT_SECRET = _secrets.token_hex(32)
         # app.py 会把 secret 写回文件，这里只读不打
-        print(f"[WARNING] SOC_ADMIN_SECRET not set. Using auto-generated secret (persists across restarts via .secret file).")
+        logging.getLogger(__name__).warning(
+            "SOC_ADMIN_SECRET not set. Using auto-generated secret (persists across restarts via .secret file)."
+        )
 JWT_ALGO = 'HS256'
 JWT_EXPIRE_HOURS = 8
 
@@ -43,8 +45,8 @@ def create_token(username: str, role: str, tenant_id: int = 1) -> str:
         'username': username,
         'role': role,
         'tenant_id': tenant_id,
-        'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS),
-        'iat': datetime.utcnow()
+        'exp': datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS),
+        'iat': datetime.now(timezone.utc)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
 
@@ -124,7 +126,7 @@ def log_action(action: str, module: str, target: str = '', details: str = '', re
             ))
             conn.commit()
     except Exception as e:
-        print(f"审计日志写入失败: {e}")
+        logging.getLogger(__name__).error(f"审计日志写入失败: {e}")
 
 
 # 别名保持向后兼容
