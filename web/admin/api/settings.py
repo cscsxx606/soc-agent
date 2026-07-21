@@ -78,7 +78,7 @@ def register(app):
 
                 resp = requests.post(webhook, json={
                     "msg_type": "text",
-                    "content": {"text": "🛡️ SOC 管理后台通知测试\n\n这是一条测试消息。"}
+                    "content": {"text": "🛡️ AegisGuard 控制台通知测试\n\n这是一条测试消息。"}
                 }, timeout=10)
                 return jsonify({
                     'success': resp.status_code == 200,

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SOC 管理后台 - 增强版入口
+AegisGuard 控制台 - 增强版入口
 仪表盘图表 + 数据源/Playbook 可视化编辑器 + SSE 实时事件流
 """
 
@@ -478,7 +478,7 @@ def api_version():
     return jsonify({
         'version': API_VERSION,
         'api_base': f'/api/{API_VERSION}/admin/',
-        'agent': 'SOC Multi-Agent System',
+        'agent': 'AegisGuard AI SOC Platform',
         'version_full': '2.1.0',
         'build_date': '2026-07-20'
     })
@@ -487,7 +487,7 @@ def api_version():
 def run_server(host='0.0.0.0', port=8889, debug=False):
     print(f"""
 ╔════════════════════════════════════════════════════════════════════════════╗
-║          SOC Multi-Agent 管理后台  (Gunicorn + WAL 模式)                   ║
+║          AegisGuard 控制台  (Gunicorn + WAL 模式)                        ║
 ║                                                                            ║
 ║   访问地址: http://localhost:{port}                                         ║
 ║   默认账号: admin / admin123                                               ║
@@ -503,7 +503,7 @@ def run_server(host='0.0.0.0', port=8889, debug=False):
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='SOC 管理后台')
+    parser = argparse.ArgumentParser(description='AegisGuard 控制台')
     parser.add_argument('--host', default='0.0.0.0')
     parser.add_argument('--port', type=int, default=8889)
     args = parser.parse_args()

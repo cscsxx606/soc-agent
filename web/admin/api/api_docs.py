@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SOC Agent API 文档生成器
+AegisGuard API 文档生成器
 访问 http://localhost:8889/api/docs 查看 API 文档
 """
 
@@ -48,10 +48,10 @@ code {{ background: #0a0e1a; padding: 1px 5px; border-radius: 3px; font-size: 12
 </head>
 <body>
 <div class="header">
-    <h1>🛡️ SOC Agent API 文档</h1>
-    <p>SOC Multi-Agent System · REST API v1 · Build 2026-07-20</p>
+    <h1>🛡️ AegisGuard API 文档</h1>
+    <p>AegisGuard AI SOC Platform · REST API v1 · Build 2026-07-20</p>
     <div class="meta">
-        Agent: SOC Multi-Agent System · 版本: 2.1.0 · 接口基础路径: <code>/api/v1/admin/</code>
+        Agent: AegisGuard AI SOC Platform · 版本: 2.1.0 · 接口基础路径: <code>/api/v1/admin/</code>
     </div>
 </div>
 <div class="container" id="api-list"></div>
@@ -139,7 +139,7 @@ API_SPEC = {
         "summary": "API 版本信息",
         "description": "返回系统版本号和构建信息",
         "auth": "无需鉴权",
-        "response": {"version": "v1", "api_base": "/api/v1/admin/", "agent": "SOC Multi-Agent System", "version_full": "2.1.0", "build_date": "2026-07-20"}
+        "response": {"version": "v1", "api_base": "/api/v1/admin/", "agent": "AegisGuard AI SOC Platform", "version_full": "2.1.0", "build_date": "2026-07-20"}
     },
     "/health": {
         "method": "GET",

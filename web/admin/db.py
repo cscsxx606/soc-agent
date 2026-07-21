@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SOC 管理后台 - 数据库初始化
+AegisGuard 控制台 - 数据库初始化
 SQLite 单文件存储
 """
 
@@ -352,7 +352,7 @@ def _do_init():
 
     # 默认系统设置
     default_settings = [
-        ('site.name', 'SOC Multi-Agent 管理后台', 'general', 0),
+        ('site.name', 'AegisGuard 控制台', 'general', 0),
         ('site.timezone', 'Asia/Shanghai', 'general', 0),
         ('site.language', 'zh-CN', 'general', 0),
         ('api.deepseek_key', '', 'api_keys', 1),
@@ -685,7 +685,7 @@ def _do_init():
         CREATE TABLE IF NOT EXISTS branding (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tenant_id INTEGER UNIQUE DEFAULT 1,
-            site_name TEXT DEFAULT 'SOC 控制台',
+            site_name TEXT DEFAULT 'AegisGuard 控制台',
             logo_url TEXT,
             favicon_url TEXT,
             primary_color TEXT DEFAULT '#6366f1',
@@ -708,7 +708,7 @@ def _do_init():
     if not cur.execute("SELECT id FROM branding WHERE tenant_id=1").fetchone():
         cur.execute("""
             INSERT INTO branding (tenant_id, site_name, primary_color, footer_text)
-            VALUES (1, 'SOC 控制台', '#6366f1', 'Powered by SOC Agent v2.0')
+            VALUES (1, 'AegisGuard 控制台', '#6366f1', 'Powered by AegisGuard v2.0')
         """)
 
     # 默认通知模板

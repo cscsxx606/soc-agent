@@ -63,7 +63,7 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         data = r.get_json()
         self.assertIn('version', data)
-        self.assertEqual(data['agent'], 'SOC Multi-Agent System')
+        self.assertEqual(data['agent'], 'AegisGuard AI SOC Platform')
 
     # ====== 认证 ======
 

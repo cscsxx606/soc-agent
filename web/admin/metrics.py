@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SOC Agent Prometheus 指标
+AegisGuard Prometheus 指标
 - /metrics 端点暴露 text/plain 格式
 - 默认注册系统指标（CPU、内存）
 - 业务指标：请求总数、请求时长（每个 endpoint+method 一组）

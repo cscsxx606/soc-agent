@@ -17,18 +17,18 @@
     <div class="panel">
         <h3>🎨 品牌配置</h3>
         <p style="color:#8a93a8;font-size:13px;margin-bottom:15px;">自定义站点名称、Logo、主题色，以符合你的品牌形象。</p>
-        <div class="form-row"><label>站点名称</label><input id="b-site-name" placeholder="SOC 控制台"></div>
+        <div class="form-row"><label>站点名称</label><input id="b-site-name" placeholder="AegisGuard 控制台"></div>
         <div class="form-row"><label>Logo URL（可选）</label><input id="b-logo" placeholder="https://your-company.com/logo.png"></div>
         <div class="form-row"><label>Favicon URL（可选）</label><input id="b-favicon" placeholder="https://your-company.com/favicon.ico"></div>
         <div class="form-row"><label>主题色</label><div style="display:flex;gap:10px;align-items:center;"><input id="b-color" type="color" value="#6366f1" style="width:50px;height:40px;"><span id="b-color-preview">#6366f1</span></div></div>
-        <div class="form-row"><label>底部文字</label><input id="b-footer" placeholder="Powered by SOC Agent"></div>
+        <div class="form-row"><label>底部文字</label><input id="b-footer" placeholder="Powered by AegisGuard"></div>
         <button onclick="saveBranding()">💾 保存品牌配置</button>
     </div>
     <div class="panel" style="margin-top:15px;">
         <h3>👁️ 预览</h3>
         <div id="branding-preview" style="background:#0a0e1a;padding:20px;border-radius:8px;text-align:center;">
-            <div style="font-size:24px;font-weight:700;" id="preview-title">SOC 控制台</div>
-            <div style="color:#64748b;font-size:12px;margin-top:5px;" id="preview-footer">Powered by SOC Agent v2.0</div>
+            <div style="font-size:24px;font-weight:700;" id="preview-title">AegisGuard 控制台</div>
+            <div style="color:#64748b;font-size:12px;margin-top:5px;" id="preview-footer">Powered by AegisGuard v2.0</div>
         </div>
     </div>
 </div>
@@ -114,7 +114,7 @@ async function loadBranding() {
 }
 
 function updatePreview() {
-    document.getElementById('preview-title').textContent = document.getElementById('b-site-name').value || 'SOC 控制台';
+    document.getElementById('preview-title').textContent = document.getElementById('b-site-name').value || 'AegisGuard 控制台';
     document.getElementById('preview-footer').textContent = document.getElementById('b-footer').value || '';
     const color = document.getElementById('b-color').value;
     document.getElementById('branding-preview').style.borderTop = '3px solid ' + color;
@@ -227,7 +227,7 @@ async function loadTenants() {
 }
 
 function updatePreview() {
-    const name = document.getElementById('b-site-name').value || 'SOC 控制台';
+    const name = document.getElementById('b-site-name').value || 'AegisGuard 控制台';
     const footer = document.getElementById('b-footer').value || '';
     const color = document.getElementById('b-color').value || '#6366f1';
     document.getElementById('preview-title').textContent = name;

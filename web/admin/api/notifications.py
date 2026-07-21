@@ -131,7 +131,7 @@ def register(app):
             row = conn.execute("SELECT * FROM branding WHERE tenant_id=?", (tid,)).fetchone()
         if not row:
             return jsonify({'success': True, 'branding': {
-                'site_name': 'SOC 控制台', 'primary_color': '#6366f1', 'footer_text': ''}})
+                'site_name': 'AegisGuard 控制台', 'primary_color': '#6366f1', 'footer_text': ''}})
         return jsonify({'success': True, 'branding': dict(row)})
 
     @app.route('/api/admin/branding/update', methods=['POST'])
